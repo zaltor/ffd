@@ -1,14 +1,14 @@
 function opts = getopts(defaults, varargin)
 %GETOPTS    Parse key-value pairs in varargin into a struct
-%   opts = GETOPTS(defaults, param1, value1, param2, value2, ...) will grab
+%   OPTS = GETOPTS(DEFAULTS, PARAM1, VALUE1, PARAM2, VALUE2, ...) will grab
 %   an arbitrary number of parameter/value pairs and return them in the
 %   struct opts. The parameter names must already be fields of the struct
 %   defaults or an error will be generated. The only exception to this rule
 %   is the 'opts' parameter name (see below).
 %
-%   opts = GETOPTS(defaults, 'opts', opts) will update the parameter/value
+%   OPTS = GETOPTS(DEFAULTS, 'opts', OPTS) will update the parameter/value
 %   pairs stored in defaults with the ones stored in opts and return the
-%   resulting struct. Fields of opts must be existing fields in defaults or
+%   resulting struct. Fields of OPTS must be existing fields in DEFAULTS or
 %   an error will result. The presence of the 'opts' parameter takes
 %   precedence over the standard parameter/value pairs, so if 'opts' is a
 %   parameter passed into GETOPTS, then the other parameter/value pairs
