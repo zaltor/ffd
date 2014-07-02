@@ -54,7 +54,7 @@ function [X, fvals, yerrs, Jerrs] = ffd(y, sys, varargin)
 %
 %      SYS.N should return the number of spatial samples in the input field
 %
-%      SYS.parts should return the number of blocks into which operations
+%      SYS.parts() should return the number of blocks into which operations
 %      will be split
 %
 %      BLOCK = SYS.parts(I) places the index of the first measurement in
@@ -189,7 +189,7 @@ M = size(y,1);
 try
     % duck typing way of getting at structure/object components
     sys.adjoint(sys.forward(zeros(sys.N,0),1),1);
-    sys.parts;
+    sys.parts();
     sys.N;
 catch err
     error('ffd:input:sysspec','invalid sys structure');
@@ -224,7 +224,7 @@ opts.rs = [];
 opts.tracereg = struct;
 opts.tracereg.forward = @(x,n) 0;
 opts.tracereg.gradient = @(x,n) 0;
-opts.tracereg.parts = parts_template([]);
+opts.tracereg.parts = ffd.sys.parts_template([]);
 opts.yerr_mask = true(M,1);
 
 opts = getopts(opts, varargin{:});
