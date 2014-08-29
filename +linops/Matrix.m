@@ -1,5 +1,5 @@
-classdef MatrixOp < BlockLinOp
-    %MATRIXOP Matrix-based blockwise linear operator
+classdef Matrix < linops.Blockwise
+    %MATRIX Matrix-based blockwise linear operator
     %   Detailed explanation goes here
     
     properties
@@ -18,7 +18,7 @@ classdef MatrixOp < BlockLinOp
     end
     
     methods
-        function obj = MatrixOp(A, maxRows, maxCols)
+        function obj = Matrix(A, maxRows, maxCols)
             dims = size(A);
             obj.m = dims(1);
             obj.n = dims(2);

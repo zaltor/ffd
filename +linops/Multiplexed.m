@@ -1,5 +1,5 @@
-classdef MultiplexedOp < BlockLinOp
-    %MULTIPLEXEDOP A blockwise linear operator containing sub-operators
+classdef Multiplexed < linops.Blockwise
+    %MULTIPLEXED A blockwise linear operator containing sub-operators
     
     properties
         m;
@@ -14,7 +14,7 @@ classdef MultiplexedOp < BlockLinOp
     end
     
     methods
-        function obj = MultiplexedOp(sources)
+        function obj = Multiplexed(sources)
             obj.sources = sources;
             obj.update;
         end
@@ -41,12 +41,12 @@ classdef MultiplexedOp < BlockLinOp
                 else
                     % check for consistency
                     if obj.m ~= mTemp
-                        error('MultiplexedOp:inconsistentrows',...
+                        error('Multiplexed:inconsistentrows',...
                               'inconsistent row count for column %d in sources',...
                               j);
                     end
                     if ~isequal(obj.rowSplits,rowEndsTemp(1:end-1)+1)
-                        error('MultiplexedOp:inconsistentrowSplits',...
+                        error('Multiplexed:inconsistentrowSplits',...
                               'inconsistent row blocks for column %d in sources',...
                               j);
                     end  
@@ -70,12 +70,12 @@ classdef MultiplexedOp < BlockLinOp
                 else
                     % check for consistency
                     if obj.n ~= nTemp
-                        error('MultiplexedOp:inconsistentcols',...
+                        error('Multiplexed:inconsistentcols',...
                               'inconsistent column count for row %d in sources',...
                               i);
                     end
                     if ~isequal(obj.colSplits,colEndsTemp(1:end-1)+1)
-                        error('MultiplexedOp:inconsistentcolSplits',...
+                        error('Multiplexed:inconsistentcolSplits',...
                               'inconsistent column blocks for row %d in sources',...
                               i);
                     end  
