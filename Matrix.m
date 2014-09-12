@@ -11,10 +11,6 @@ classdef Matrix < linops.Blockwise
     
     properties (Hidden)
         A;
-        rowStarts;
-        rowEnds;
-        colStarts;
-        colEnds;
     end
     
     methods
@@ -33,22 +29,20 @@ classdef Matrix < linops.Blockwise
             end
             nRowBlocks = ceil(obj.m/maxRows);
             nColBlocks = ceil(obj.n/maxCols);
-            obj.rowEnds = round((1:nRowBlocks)*obj.m/nRowBlocks);
-            obj.colEnds = round((1:nColBlocks)*obj.n/nColBlocks);
-            obj.rowSplits = obj.rowEnds(1:end-1)+1;
-            obj.colSplits = obj.colEnds(1:end-1)+1;
-            obj.rowStarts = [1,obj.rowSplits];
-            obj.colStarts = [1,obj.colSplits];
+            rowEnds = round((1:nRowBlocks)*obj.m/nRowBlocks);
+            colEnds = round((1:nColBlocks)*obj.n/nColBlocks);
+            obj.rowSplits = rowEnds(1:end-1)+1;
+            obj.colSplits = colEnds(1:end-1)+1;
         end
         
         function yBlock = forward(obj, s, t, xBlock)
-            yBlock = obj.A(obj.rowStarts(s):obj.rowEnds(s),...
-                           obj.colStarts(t):obj.colEnds(t)) * xBlock;
+            yBlock = obj.A(obj.rowFirst(s):obj.rowLast(s),...
+                           obj.colFirst(t):obj.colLast(t)) * xBlock;
         end
         
         function xBlock = adjoint(obj, s, t, yBlock)
-            xBlock = obj.A(obj.rowStarts(s):obj.rowEnds(s),...
-                           obj.colStarts(t):obj.colEnds(t))' * yBlock;
+            xBlock = obj.A(obj.rowFirst(s):obj.rowLast(s),...
+                           obj.colFirst(t):obj.colLast(t))' * yBlock;
         end
     end
     

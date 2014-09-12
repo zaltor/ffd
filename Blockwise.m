@@ -25,10 +25,12 @@ classdef Blockwise < handle
     %
     %Helper
     %BLOCKWISE methods:
-    %  rowFirst - Return the first row of block(s)
-    %  rowLast  - Return the last row of block(s)
-    %  colFirst - Return the first column of block(s)
-    %  colLast  - Return the last column of block(s)
+    %  rowBlocks - Return the number of partitions along rows
+    %  rowFirst  - Return the first row of block(s)
+    %  rowLast   - Return the last row of block(s)
+    %  colBlocks - Return the number of partitions along columns
+    %  colFirst  - Return the first column of block(s)
+    %  colLast   - Return the last column of block(s)
 
     properties (Abstract)
         m; % number of rows/output values
@@ -90,12 +92,28 @@ classdef Blockwise < handle
     end
     
     methods
-        function dims = size(obj)
+        function dims = size(obj, dim)
             %SIZE   Number of inputs and outputs in the linear operator
             %   A.SIZE() or SIZE(A) will return the size of the blockwise
             %   linear operator object A as [M N], where M is the number 
             %   of rows (outputs) and N is the number of columns (inputs).
-            dims = [obj.m, obj.n];
+            if ~exist('dim','var')
+                dims = [obj.m, obj.n];
+            else
+                switch(dim)
+                    case 1
+                        dims = obj.m;
+                    case 2
+                        dims = obj.n;
+                    otherwise
+                        if dim > 2
+                            dims = 1;
+                        else
+                            error('linops:Blockwise:size:InvalidDim',...
+                                  'invalid dimension');
+                        end
+                end
+            end
         end
         
         function A = vertcat(varargin)
@@ -139,6 +157,13 @@ classdef Blockwise < handle
             end
         end
         
+        function blocks = rowBlocks(obj)
+            %ROWBLOCKS Return the number of partitions along rows
+            %   A.ROWBLOCKS returns the number of partitions along rows in 
+            %   blockwise linear operator A 
+            blocks = numel(obj.rowSplits)+1;
+        end
+        
         function row = rowFirst(obj, idx)
             %ROWFIRST Return the first row of block(s)
             %   A.ROWFIRST(IDX) fetches the index of the first row(s) of A
@@ -153,6 +178,13 @@ classdef Blockwise < handle
             %   in blocks specified by row block indexes IDX
             temp = [obj.rowSplits-1; obj.m];
             row = temp(idx);
+        end
+        
+        function blocks = colBlocks(obj)
+            %ROWBLOCKS Return the number of partitions along columns
+            %   A.ROWBLOCKS returns the number of partitions along columns
+            %   in blockwise linear operator A 
+            blocks = numel(obj.colSplits)+1;
         end
         
         function col = colFirst(obj, idx)
