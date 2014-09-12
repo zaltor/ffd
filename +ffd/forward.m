@@ -1,35 +1,32 @@
-function y = forward(sys, X)
+function y = forward(KH, X, C)
 %ffd.FORWARD    Compute the forward transform and return "measurements"
-%   Y = ffd.FORWARD(SYS, X) will propagate the set of generalized coherence
-%   modes given by X through an optical system specified by SYS and return
+%   Y = ffd.FORWARD(KH, X) will propagate the set of generalized coherence
+%   modes given by X through an optical system specified by KH and return
 %   a set of measurement intensities in Y.
+%
+%   Y = ffd.FORWARD(KH, X, C) will coagulate intensities into measurements
+%   using C
 
 % determine M and N
-N = sys.N;
-M = 0;
-for i=1:sys.parts()
-    block = sys.parts(i);
-    M = max(M,max(block));
-end
+N = size(KH,2);
+M = size(KH,1);
 
 if N ~= size(X,1)
-    error('forward:sysmismatch','sys and X do not share the same N');
+    error('forward:sysmismatch','X needs to have %d rows', N);
 end
 
-% create dummy gather operations if necessary
-try
-    sys.gather(sys.scatter(zeros(M,0),1),1);
-    sysgather = @(y,i) sys.gather(y,i);
-catch err
-    sysgather = @(y,i) y;
+if ~exist('C','var')
+    C = linops.Identity(M);
 end
 
 % create the output
 y = zeros(M,1);
 
 % fill in the output, part by part
-for i=1:sys.parts()
-    block = sys.parts(i);
-    temp = sys.forward(X,i);
-    y(block(1):block(2)) = sysgather(sum(temp.*conj(temp),2),i);
+for yIdx=1:KH.rowBlocks
+    KHX_block = 0;
+    for xIdx=1:KH.colBlocks
+        KHX_block = KHX_block + KH.forward(yIdx,xIdx,X(KH.colFirst(xIdx):KH.colLast(xIdx),:));
+    end
+    y(KH.rowFirst(yIdx):KH.rowLast(yIdx)) = C.forward(yIdx,yIdx,sum(KHX_block.*conj(KHX_block),2));
 end

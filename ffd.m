@@ -1,30 +1,31 @@
-function [X, fvals, yerrs, Jerrs] = ffd(y, sys, varargin)
+function [X, fvals, yerrs, Jerrs] = ffd(y, KH, varargin)
 %FFD    Coherence retrieval using factored form descent
-%   X = FFD(Y, SYS) computes a set of (generalized) coherence modes from 
-%   intensity measurements and a known optical system specification.  The 
-%   result X is an N-by-N complex matrix where N is the number of spatial 
+%   X = FFD(Y, KH) computes a set of (generalized) coherence modes from
+%   intensity measurements and a known linear optical system. The optical
+%   system is specified by a linear operator KH, an object of any subclass
+%   of linops.Blockwise, which maps the field at each source sample
+%   position to the field at each intensity measurement position, i.e.
+%   giving the optical system's coherent impulse response. FFD will attempt
+%   to minimize the least squared error in intensity measurements. The
+%   result X is an N-by-N complex matrix where N is the number of spatial
 %   samples in the source. Each column of X is a (generalized) coherence
 %   mode, and Y is an M-by-1 nonnegative vector containing the
-%   measurements, and SYS is a class or struct that specifies the optical 
-%   system(s). 
+%   intensity measurements.
 %
-%   FFD will attempt to minimize the weighted least squared error in the 
-%   measurements. If the 'tracereg' option is not specified, the merit 
-%   function can be computed in the following way (for more information 
-%   about the other parameters, please see the Optimization Options 
-%   section below):
+%   X = FFD(Y, KH, 'w', W) will instead minimize the weighted least squared
+%   error in intensity measurements, with weighting vector W, which is
+%   expected to be the same size as Y. Each element of W weighs the
+%   absolute value of the error for the same index element in Y.
 %
-%      fval = 0;
-%      nparts = SYS.parts;
-%      for i=1:nparts
-%          block = SYS.parts(i);
-%          xhat = SYS.forward(X,i);
-%          yprime = sum(xhat.*conj(xhat),2);
-%          fval=fval+sum(W(block(1):block(2)).^2 .* ...
-%                        (Y(block(1):block(2))-SYS.gather(YPRIME,i)).^2)
-%      end
+%   X = FFD(..., 'C', C) will minimize the (weighted) least squared error
+%   in linear combinations of intensity measurements, where C is a
+%   linops.Blockwise object. That is, if Z is a vector of the intensity
+%   values derived from the current iterate, then the merit function is
+%   equal to norm(Y-C*Z,2)^2. Note: C must be block-wise diagonal and the 
+%   row partitioning pattern for KH must be the same as the row and column 
+%   partitioning patterns for C.
 %
-%   X = FFD(Y, SYS, 'R', R) performs coherence retrieval where the number
+%   X = FFD(Y, KH, 'R', R) performs coherence retrieval where the number
 %   of modes is limited to R. In this case, X will be an N-by-R matrix. For
 %   phase retrieval (i.e. a fully coherent field) R should be set to 1.
 %   
@@ -32,60 +33,41 @@ function [X, fvals, yerrs, Jerrs] = ffd(y, sys, varargin)
 %   merit function and the RMS error in the intensity in FVALS and YERRS
 %   respectively.
 %
-%   [X, FVALS, YERRS, JERRS] = FFD(Y, SYS, 'Jthe', J0, ...) will store the
-%   per-iteration RMS error (relative to J0) in the mutual intensity in 
-%   JERRS.
+%   [X, FVALS, YERRS, JERRS] = FFD(Y, KH, 'Jthe', J0, ...) will
+%   additionally store in JERRS the per-iteration RMS error in the mutual
+%   intensity with respect to J0.
 %
-%   [X, FVALS, YERRS, JERRS] = FFD(Y, SYS, 'Xthe', X0, ...) will store the
-%   per-iteration RMS error (relative to X0*X0') in the mutual intensity in
-%   JERRS. This is more efficient than the previous approach if R is set to
-%   1.
+%   [X, FVALS, YERRS, JERRS] = FFD(Y, KH, 'Xthe', X0, ...) will store in
+%   JERRS the per-iteration RMS error in the mutual intensity with respect
+%   to X0*X0'. This is more efficient than the previous approach if R is
+%   set to 1.
 %
-%   System Specification
-%   ====================
-% 
-%   Optical systems corresponding to the measurements in Y are specified 
-%   with SYS, which is either an object or struct which provides a set of 
-%   required and optional members/fields. For memory efficiency, FFD will
-%   break computation blockwise so that computation for different 
-%   contiguous blocks of Y will be done serially.
+%   Merit Function
+%   ==============
 %
-%   SYS must implement the following:
+%   FFD works by reducing the value of a merit function one iteration at a
+%   time. If the 'Q' regularization option is not specified, the merit
+%   function can be computed in the following way (for more information
+%   about the other parameters, please see the Optimization Options section
+%   below):
 %
-%      SYS.N should return the number of spatial samples in the input field
-%
-%      SYS.parts() should return the number of blocks into which operations
-%      will be split
-%
-%      BLOCK = SYS.parts(I) places the index of the first measurement in
-%      the Ith block of Y in BLOCK(1) and places the index of the last
-%      measurement in BLOCK(2).
-%
-%      XHAT = SYS.forward(X, I) should perform the forward transform of the
-%      optical system for block I. That is, the set of R fields in the
-%      N-by-R matrix X are propagated such that XHAT contains the field
-%      corresponding to the Ith block of measurements Y. The forward
-%      transform must be a linear operator of X; even affine operators will
-%      violate FFD's assumptions.
-%
-%      X = SYS.adjoint(XHAT, I) should perform the adjoint transform for
-%      SYS.forward(X, I).
-%
-%   SYS may optionally provide the following (both must be provided in
-%   order for these to be used):
-%
-%      Y = SYS.gather(YPRIME, I) takes the set of intensities YPRIME 
-%      corresponding to the Ith block of measurements and computes the 
-%      actual measurements Y. This is used when we wish to solve for the 
-%      least squared error in sums of intensity, e.g. to simulate finite 
-%      sensor pixel area which accumulates intensities from multiple output 
-%      spatial samples. This function must be a linear operator with
-%      nonnegative coefficients when expressed in matrix form. 
-%
-%      YPRIME = SYS.scatter(Y, I) is the adjoint operator for SYS.gather.
-%
-%   When both of the above are not specified, it is as if
-%   SYS.gather(YPRIME, I) returns YPRIME and SYS.scatter(Y, I) returns Y.
+%      fval = 0;
+%      yBlocks = KH.rowBlocks;
+%      xBlocks = KH.colBlocks;
+%      yIdx1 = KH.rowFirst(1:yBlocks);
+%      yIdx2 = KH.rowLast(1:yBlocks);
+%      xIdx1 = KH.colFirst(1:xBlocks);
+%      xIdx2 = KH.colLast(1:xBlocks);
+%      for i=1:yBlocks
+%          yprime = 0;
+%          for j=1:xBlocks
+%              xhat = KH.forward(i,j,X(xIdx1(j):xIdx2(j),:));
+%              yprime = yprime + sum(xhat.*conj(xhat),2);
+%          end
+%          Cyprime = C.forward(i,i,yprime);
+%          fval = fval + sum(W(yIdx1(i):yIdx2(i)).^2 .* ...
+%                            (Y(yIdx1(i):yIdx2(i))-Cyprime).^2);
+%      end
 %
 %   Optimization Options
 %   ====================
@@ -95,11 +77,13 @@ function [X, fvals, yerrs, Jerrs] = ffd(y, sys, varargin)
 %
 %   FFD(Y, SYS, 'param1', VALUE1, 'param2', VALUE2, ...)
 %
-%   Alternatively, a struct with field names equal to the parameter names and field values equal to the
-%   parameter values can be passed in as well using the parameter name
-%   'opts': (in this situation, any other options are ignored)
+%   Alternatively, a struct with field names equal to the parameter names
+%   and field values equal to the parameter values can be passed in as well
+%   using the parameter name 'opts': 
 %
 %   FFD(Y, SYS, 'opts', OPTS)
+%
+%   (when 'opts' is specified, any other options are ignored)
 %
 %   The following is a complete list of acceptable options:
 %
@@ -153,61 +137,39 @@ function [X, fvals, yerrs, Jerrs] = ffd(y, sys, varargin)
 %      reduce the negative effects of factorization. This is the default
 %      behavior.
 %
+%      FFD(..., 'Q', Q, ...) will add an energy minimization term
+%      trace((Q*X)*(Q*X)') to the merit function, where Q is a
+%      linops.Blockwise object.
+%
 %      FFD(..., 'rs', RS, ...) will force FFD to use a specific RandStream
 %      for generating random numbers (i.e. for setting the initial value).
 %      If unspecified, FFD will use the global random number generator.
 %
-%      FFD(..., 'tracereg', TRACEREG, ...) will add an energy minimization
-%      term trace((Q*X)*(Q*X)') to the merit function. Like the system 
-%      specification, computation for this can also be done blockwise.
-%      TRACEREG is either a struct or an object providing the following:
-%    
-%         TRACEREG.parts gives the number of blocks
-%        
-%         TRACEREG.parts(I) gives the first and last indexes for block I.
-%
-%         TRACEREG.forward(X, I) computes the Ith block of Q*X.
-%
-%         TRACEREG.gradient(X, I) computes the Ith block of Q'*Q*X.
-%
-%         TRACEREG.adjoint (X, I) computes the Ith block of Q'*X. At least
-%         one of TRACEREG.gradient or TRACEREG.adjoint must be provided,
-%         and if TRACREG.gradient is provided, then TRACEREG.adjoint is 
-%         ignored.
+%      FFD(..., 'Jerr_mask', JERR_MASK, ...) will force FFD to only compute
+%      JERRS based on certain elements of J. JERR_MASK is a logical N-by-1
+%      array (i.e. same number of rows as X and J_THE), and an element is
+%      true if the corresponding row in X is to be used for mutual
+%      intensity RMS error calculation.
 %
 %      FFD(..., 'yerr_mask', YERR_MASK, ...) will force FFD to only compute
-%      YERRS based on certain elements of Y. YERR_MASK is a logical array
-%      the same size as Y, and an element is true if the corresponding
-%      element in Y is to be used for RMS error calculation.
+%      YERRS based on certain elements of Y. YERR_MASK is a logical M-by-1
+%      array (i.e. the same size as Y), and an element is true if the
+%      corresponding element in Y is to be used for RMS error calculation.
 
-% extract system and get dimensions
+% check for valid y and extract size
 if size(y,1) ~= numel(y)
-    error('ffd:input:ysize','y must be an M-by-1 vector');
+    error('ffd:input:y','y must be an M-by-1 vector');
 end
 M = size(y,1);
 
-try
-    % duck typing way of getting at structure/object components
-    sys.adjoint(sys.forward(zeros(sys.N,0),1),1);
-    sys.parts();
-    sys.N;
-catch err
-    error('ffd:input:sysspec','invalid sys structure');
-end    
-
-% create dummy gather and scatter operations if necessary
-try
-    sys.gather(sys.scatter(zeros(M,0),1),1);
-    sysgather = @(y,i) sys.gather(y,i);
-    sysscatter = @(y,i) sys.scatter(y,i);
-catch err
-    sysgather = @(y,i) y;
-    sysscatter = @(y,i) y;
+% check for valid KH and extract size and partitioning
+if ~isa(KH, 'linops.Blockwise')
+    error('ffd:input:KH','KH must be a linops.Blockwise object');
 end
-
-KH = sys.forward;
-K = sys.adjoint;
-N = sys.N;
+N = size(KH,2);
+xBlocks = KH.colBlocks;
+xIdx1 = KH.colFirst(1:xBlocks);
+xIdx2 = KH.colLast(1:xBlocks);
 
 % get options
 opts = struct;
@@ -221,20 +183,56 @@ opts.verbose = 1;
 opts.verbtime = 10;
 opts.precond = 'whiten';
 opts.rs = [];
-opts.tracereg = struct;
-opts.tracereg.forward = @(x,n) 0;
-opts.tracereg.gradient = @(x,n) 0;
-opts.tracereg.parts = ffd.sys.parts_template([]);
+opts.C = linops.Identity(M,KH.rowSplits);
+opts.Q = [];
 opts.yerr_mask = true(M,1);
+opts.Jerr_mask = true(N,1);
 
 opts = getopts(opts, varargin{:});
 
-try
-    opts.tracereg.gradient(zeros(sys.N,0),1);
-    tracereggradient = @(x,n) opts.tracereg.gradient(x,n);
-catch err
-    tracereggradient = @(x,n) opts.tracereg.adjoint(opts.tracereg.forward(x,n),n);
+% check for valid C object and extract paritioning
+if ~isa(opts.C, 'linops.Blockwise')
+    error('ffd:input:C:type','C must be a linops.Blockwise object');
 end
+
+if size(opts.C, 1) ~= M
+    error('ffd:input:C:rows','C must have a total of %d rows', M);
+end
+
+if numel(opts.C.rowSplits) ~= numel(opts.C.colSplits)
+    error('ffd:input:C:diagonal','C must be block diagonal');
+end
+
+if size(opts.C,2) ~= size(KH,1) || ~isequal(opts.C.colSplits,KH.rowSplits)
+    error('ffd:input:C:compatible',...
+          'C''s column partitioning must be identical to K''s row partitioning');
+end
+
+yBlocks = opts.C.rowBlocks;
+yIdx1 = opts.C.rowFirst(1:yBlocks);
+yIdx2 = opts.C.rowLast(1:yBlocks);
+zIdx1 = opts.C.colFirst(1:yBlocks);
+zIdx2 = opts.C.colLast(1:yBlocks);
+
+% check for valid Q object and extract partitioning
+if isempty(opts.Q)
+    opts.Q = linops.Matrix(sparse(0,N));
+end
+    
+if ~isa(opts.Q, 'linops.Blockwise')
+    error('ffd:input:Q:type','Q must either be empty or a linops.Blockwise object');
+end
+
+if size(opts.Q,2) ~= N
+    error('ffd:input:Q:cols','Q must have %d columns', N);
+end
+
+xxBlocks = opts.Q.colBlocks;
+xxIdx1 = opts.Q.colFirst(1:xxBlocks);
+xxIdx2 = opts.Q.colLast(1:xxBlocks);
+QxxBlocks = opts.Q.rowBlocks;
+QxxIdx1 = opts.Q.rowFirst(1:QxxBlocks);
+QxxIdx2 = opts.Q.rowLast(1:QxxBlocks);
 
 % Precalculation setup
 if isempty(opts.rs)
@@ -242,7 +240,11 @@ if isempty(opts.rs)
 else
     rs = opts.rs;
 end
-w2 = opts.w.^2;
+if isempty(opts.w)
+    w2 = ones(size(y));
+else
+    w2 = opts.w.^2;
+end
 showstatus = opts.verbose >= 1;
 
 doJerr = (nargout > 3);
@@ -256,9 +258,11 @@ if strcmp(opts.X0,'white') == true
     X = rs.randn(Xsize) + 1j*rs.randn(Xsize);
     % forward propagate X and rescale X so that total intensity == y's
     total_intensity = 0;
-    for part_number=1:sys.parts()
-        KHX_block = KH(X,part_number);
-        total_intensity = total_intensity + sum(sysgather(KHX_block(:).*conj(KHX_block(:)),part_number));
+    for yIdx = 1:yBlocks
+        for xIdx = 1:xBlocks
+            KHX_block = KH.forward(yIdx,xIdx,X(xIdx1(xIdx):xIdx2(xIdx),:));
+            total_intensity = total_intensity + sum(opts.C.forward(yIdx,yIdx,sum(KHX_block.*conj(KHX_block),2)));
+        end
     end
     clear KHX_block;
     scaling = sqrt(sum(y)/total_intensity);
@@ -267,25 +271,30 @@ elseif strcmp(opts.X0,'guess') == true
     if showstatus
         fprintf('Generating random guess for X...\n');
     end
-    X = 0;
-    for part_number=1:sys.parts()
-        block = sys.parts(part_number);
-        ytemp = repmat(y(block(1):block(2)),[1 Xsize(2)]) .* ...
-                exp(2j*pi*rs.rand([block(2)-block(1)+1,Xsize(2)]));
-        X = X + K(ytemp,part_number);
-        clear ytemp;
+    X = zeros(Xsize);
+    for yIdx = 1:yBlocks
+        for xIdx = 1:xBlocks
+            ytemp = repmat(sqrt(y(yIdx1(yIdx):yIdx2(yIdx))),[1 Xsize(2)]) .* ...
+                    exp(2j*pi*rs.rand([yIdx2(yIdx)-yIdx1(yIdx)+1,Xsize(2)]));
+            ytemp = opts.C.adjoint(yIdx,yIdx,ytemp);
+            X(xIdx1(xIdx):xIdx2(xIdx),:) = ...
+                X(xIdx1(xIdx):xIdx2(xIdx),:) + KH.adjoint(yIdx,xIdx,ytemp);
+            clear ytemp;
+        end
     end
     % forward propagate X and rescale X so that total intensity == y's
     total_intensity = 0;
-    for part_number=1:sys.parts()
-        KHX_block = KH(X,part_number);
-        total_intensity = total_intensity + sum(sysgather(KHX_block(:).*conj(KHX_block(:)),part_number));
+    for yIdx = 1:yBlocks
+        for xIdx = 1:xBlocks
+            KHX_block = KH.forward(yIdx,xIdx,X(xIdx1(xIdx):xIdx2(xIdx),:));
+            total_intensity = total_intensity + sum(opts.C.forward(yIdx,yIdx,sum(KHX_block.*conj(KHX_block),2)));
+        end
     end
     clear KHX_block;
     scaling = sqrt(sum(y)/total_intensity);
     X = scaling*X;
 else
-    if any(size(opts.X0) ~= Xsize)
+    if ~isequal(size(opts.X0),Xsize)
         error('ffd:input:X0', 'X0 needs to be of size %s%d', sprintf('%d-by-',Xsize(1:end-1)), Xsize(end));
     end
     if showstatus
@@ -335,7 +344,8 @@ for i=1:opts.L
         fprintf('Iteration %d: ', i);
     end
 
-    % compute preconditioning, if needed
+    % preconditioning to ameliorate distortion effects caused by
+    % factorization
     switch(opts.precond)
         case 'none'
             precondX = X;
@@ -357,69 +367,79 @@ for i=1:opts.L
     
     % compute error in intensity and steepest descent direction as well as
     % preconditioned steepest descent direction
-    G = 0;
-    Ghat = 0;
+    G = zeros(Xsize);
+    Ghat = zeros(Xsize);
     fval_pre = 0;
-    for part_number=1:sys.parts()
-        block = sys.parts(part_number);
-        KHX_block = KH(X,part_number);
-        delta_block = y(block(1):block(2)) - sysgather(sum(KHX_block .* conj(KHX_block), 2),part_number);
-        accept_block = opts.yerr_mask(block(1):block(2));
-        if isempty(w2)
-            E = diag(sparse(sysscatter(delta_block,part_number)));
-        else
-            E = diag(sparse(sysscatter(delta_block,part_number).*w2(block(1):block(2))));
+    for yIdx=1:yBlocks
+        w2_block = w2(yIdx1(yIdx):yIdx2(yIdx));
+        KHX_block = zeros(size(opts.C,2),opts.R);
+        for xIdx = 1:xBlocks
+            KHX_block = KHX_block + KH.forward(yIdx,xIdx,X(xIdx1(xIdx):xIdx2(xIdx),:));
         end
-        if isempty(w2)
-            fval_inc = delta_block'*delta_block;
-            fvals(i) = fvals(i) + fval_inc;
-            if ~all(accept_block)
-                fval_pre = fval_pre + delta_block'*(delta_block.*accept_block);
-            else
-                fval_pre = fval_pre + fval_inc;
-            end
-        else
-            fval_inc = w2(block(1):block(2))'*(delta_block.^2);
-            fvals(i) = fvals(i) + fval_inc;
-            if ~all(accept_block)
-                fval_pre = fval_pre + w2(block(1):block(2))'*(delta_block.^2.*accept_block);
-            else
-                fval_pre = fval_pre + fval_inc;
-            end
-        end
-        yerrs(i) = yerrs(i) + delta_block'*(delta_block.*accept_block);
+        y_block = opts.C.forward(yIdx,yIdx,sum(KHX_block.*conj(KHX_block),2));
+        delta_block = y(yIdx1(yIdx):yIdx2(yIdx)) - y_block;
+        mask_block = opts.yerr_mask(yIdx1(yIdx):yIdx2(yIdx));
+        E = diag(sparse(opts.C.adjoint(yIdx,yIdx,delta_block.*w2_block)));
+        fval_inc = w2_block'*(delta_block.*conj(delta_block));
+        fvals(i) = fvals(i) + fval_inc;
+        fval_pre = fval_pre + w2_block'*(delta_block.*mask_block.*conj(delta_block));
+        yerrs(i) = yerrs(i) + mask_block'*(delta_block.*conj(delta_block));
         clear delta_block;
-        G = G + 4*K(E*KHX_block,part_number);
-        switch(opts.precond)
-            case 'none'
-                Ghat = G;
-            case 'whiten'
-                Ghat = Ghat + 4*K(E*KH(precondX,part_number),part_number);
+        for xIdx = 1:xBlocks
+            G(xIdx1(xIdx):xIdx2(xIdx),:) = ...
+                G(xIdx1(xIdx):xIdx2(xIdx),:) + ...
+                4*KH.adjoint(yIdx,xIdx,E*KHX_block);
         end
-        clear E;
         clear KHX_block;
-    end
-    
-    % initiate tracereg for this iteration
-    try
-        opts.tracereg.update(X);
-    catch err
-    end
-    
-    % apply regularization
-    for part_number=1:opts.tracereg.parts()
-        temp = opts.tracereg.forward(X,part_number);
-        fvals(i) = fvals(i) + sum(temp(:).*conj(temp(:)));
-        G = G - 2*tracereggradient(X,part_number);
         switch(opts.precond)
             case 'none'
                 Ghat = G;
             case 'whiten'
-                Ghat = Ghat - 2*tracereggradient(precondX,part_number);
+                KHprecondX_block = zeros(size(opts.C,2),opts.R);
+                for xIdx = 1:xBlocks
+                    KHprecondX_block = KHprecondX_block + KH.forward(yIdx,xIdx,precondX(xIdx1(xIdx):xIdx2(xIdx),:));
+                    Ghat(xIdx1(xIdx):xIdx2(xIdx),:) = ...
+                        Ghat(xIdx1(xIdx):xIdx2(xIdx),:) + ...
+                        4*KH.adjoint(yIdx,xIdx,E*KHprecondX_block);
+                end
+                clear KHprecondX_block;
         end
     end
     
+    for QxxIdx=1:QxxBlocks
+        Qxx_block = 0;
+        for xxIdx=1:xxBlocks
+            Qxx_block = Qxx_block + ...
+                opts.Q.forward(QxxIdx,xxIdx,X(xxIdx1(xxIdx):xxIdx2(xxIdx),:));
+        end
+        fvals(i) = fvals(i) + Qxx_block(:)'*Qxx_block(:);
+        for xxIdx=1:xxBlocks
+            G(xxIdx1(xxIdx):xxIdx2(xxIdx),:) = ...
+                G(xxIdx1(xxIdx):xxIdx2(xxIdx),:) - ...
+                2 * opts.Q.adjoint(QxxIdx,xxIdx,Qxx_block);
+        end
+        clear Qxx_block;
+        switch(opts.precond)
+            case 'none'
+                Ghat = G;   
+            case 'whiten'
+                Qxx_block = 0;
+                for xxIdx=1:xxBlocks
+                    Qxx_block = Qxx_block + ...
+                        opts.Q.forward(QxxIdx,xxIdx,precondX(xxIdx1(xxIdx):xxIdx2(xxIdx),:));
+                end
+                for xxIdx=1:xxBlocks
+                    Ghat(xxIdx1(xxIdx):xxIdx2(xxIdx),:) = ...
+                        Ghat(xxIdx1(xxIdx):xxIdx2(xxIdx),:) - ...
+                            2 * opts.Q.adjoint(QxxIdx,xxIdx,Qxx_block);
+                end
+                clear Qxx_block;
+        end
+    end
+
+    % convert total squared error into rms error
     yerrs(i) = sqrt(yerrs(i)/sum(opts.yerr_mask));
+    
     if doJerr
         if themodes
             Jerrs(i) = ffd.factored_distance(opts.Xthe, X)/N;
@@ -469,33 +489,45 @@ for i=1:opts.L
         fprintf(' Smag=%g', norm(S,'fro'));
     end
     
-    % perform line search by computing a quartic and minimizing it
+    % compute the single-variable quartic corresponding to the merit
+    % function along the search direction S
     quartic = [0 0 0 0 0];
-    for part_number=1:sys.parts()
-        block = sys.parts(part_number);
-        KHX_block = KH(X,part_number);
-        KHS_block = KH(S,part_number);
-        delta_block = y(block(1):block(2)) - sysgather(sum(KHX_block .* conj(KHX_block), 2),part_number);
-        b_block = -sysgather(sum(2*real(KHX_block.*conj(KHS_block)),2),part_number);
-        clear KHX_block;
-        c_block = -sysgather(sum(KHS_block.*conj(KHS_block),2),part_number);
-        clear KHS_block;
-        if isempty(w2)
-            quartic = quartic + sum([c_block.^2, 2*c_block.*b_block, 2*c_block.*delta_block+b_block.^2, 2*b_block.*delta_block, delta_block.^2],1);
-        else
-            quartic = quartic + w2(block(1):block(2))'*[c_block.^2, 2*c_block.*b_block, 2*c_block.*delta_block+b_block.^2, 2*b_block.*delta_block, delta_block.^2];
+    for yIdx=1:yBlocks
+        KHX_block = 0;
+        KHS_block = 0;
+        for xIdx=1:xBlocks
+            KHX_block = KHX_block + KH.forward(yIdx,xIdx,X(xIdx1(xIdx):xIdx2(xIdx),:));
+            KHS_block = KHS_block + KH.forward(yIdx,xIdx,S(xIdx1(xIdx):xIdx2(xIdx),:));
         end
-        clear b_block c_block;
+        y_block = opts.C.forward(yIdx,yIdx,sum(KHX_block.*conj(KHX_block),2));
+        delta_block = y(yIdx1(yIdx):yIdx2(yIdx)) - y_block;
+        clear y_block;
+        b_block = -opts.C.forward(yIdx,yIdx,sum(2*real(KHX_block.*conj(KHS_block)),2));
+        clear KHX_block;
+        c_block = -opts.C.forward(yIdx,yIdx,sum(KHS_block.*conj(KHS_block),2));
+        clear KHS_block;
+        w2_block = w2(yIdx1(yIdx):yIdx2(yIdx));
+        quartic = quartic + w2_block'*[c_block.^2,2*c_block.*b_block,2*c_block.*delta_block+b_block.^2, 2*b_block.*delta_block, delta_block.^2];
+        clear b_block;
+        clear c_block;
+        clear delta_block;
     end
-    for part_number=1:opts.tracereg.parts()
-        % add in regularization quadratic to the quartic
-        temp1 = opts.tracereg.forward(S,part_number);
-        temp2 = opts.tracereg.forward(X,part_number);
-        quadratic = [sum(temp1(:).*conj(temp1(:))), sum(2*real(temp1(:).*conj(temp2(:)))), sum(temp2(:).*conj(temp2(:)))];
+    
+    % add in energy minimization regularizer to the quartic
+    for QxxIdx=1:QxxBlocks
+        temp1 = 0;
+        temp2 = 0;
+        for xxIdx=1:xxBlocks
+            temp1 = temp1 + opts.Q.forward(QxxIdx,xxIdx,S(xxIdx1(xxIdx):xxIdx2(xxIdx),:));
+            temp2 = temp2 + opts.Q.forward(QxxIdx,xxIdx,X(xxIdx1(xxIdx):xxIdx2(xxIdx),:));
+        end
+        quadratic = [temp1(:)'*temp1(:), 2*real(temp1(:)'*temp2(:)), temp2(:)'*temp2(:)];
         clear temp1;
         clear temp2;
         quartic(3:5) = quartic(3:5) + quadratic;
     end
+
+    % find the roots of the derivative
     cubic = [4 3 2 1].*quartic(1:4);
     if isinf(cubic(1))
         alpha = 0;
