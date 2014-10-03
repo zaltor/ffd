@@ -128,6 +128,9 @@ function [X, iterations] = ffd(y, KH, varargin)
 %      FFD(..., 'callback', CALLBACK, ...) will invoke CALLBACK(OPTS,
 %      STATE) before the first iteration and after each iteration.
 %
+%      FFD(..., 'cg', false, ...) will disable conjugate gradient and cause
+%      the step direction to be simply the (preconditioned) gradient.
+%
 %      FFD(..., 'precond', 'none', ...) will force FFD to not use
 %      preconditioning
 %
@@ -180,6 +183,7 @@ opts.Xthe = [];
 opts.verbose = true;
 opts.callback = ffd.callbacks.Status(1);
 opts.precond = 'whiten';
+opts.cg = true;
 opts.rs = RandStream.getGlobalStream;
 opts.C = linops.Identity(M,KH.rowSplits);
 opts.Q = [];
@@ -470,7 +474,7 @@ for i=1:opts.L
     end
     
     % compute conjugate gradient
-    if i == 1
+    if i == 1 || ~opts.cg
         % first iteration, no conjugate gradient
         state.S = state.Ghat;
         state.G_previous = state.G;
