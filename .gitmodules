@@ -1,0 +1,3 @@
+[submodule "+linops"]
+	path = +linops
+	url = https://github.com/zaltor/linops
