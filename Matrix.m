@@ -33,6 +33,8 @@ classdef Matrix < linops.Blockwise
             colEnds = round((1:nColBlocks)*obj.n/nColBlocks);
             obj.rowSplits = rowEnds(1:end-1)+1;
             obj.colSplits = colEnds(1:end-1)+1;
+            obj.rowSplits = obj.rowSplits(:);
+            obj.colSplits = obj.colSplits(:)';
         end
         
         function yBlock = forward(obj, s, t, xBlock)
