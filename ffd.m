@@ -75,13 +75,13 @@ function [X, iterations] = ffd(y, KH, varargin)
 %   FFD allows for many options to be specified at the command-line in the
 %   form of pairs of parameter name and value:
 %
-%   FFD(Y, SYS, 'param1', VALUE1, 'param2', VALUE2, ...)
+%   FFD(Y, KH, 'param1', VALUE1, 'param2', VALUE2, ...)
 %
 %   Alternatively, a struct with field names equal to the parameter names
 %   and field values equal to the parameter values can be passed in as well
 %   using the parameter name 'opts': 
 %
-%   FFD(Y, SYS, 'opts', OPTS)
+%   FFD(Y, KH 'opts', OPTS)
 %
 %   (when 'opts' is specified, any other options are ignored)
 %
