@@ -185,7 +185,7 @@ opts.callback = ffd.callbacks.Status(1);
 opts.precond = 'whiten';
 opts.cg = true;
 opts.rs = RandStream.getGlobalStream;
-opts.C = linops.Identity(M,KH.rowSplits);
+opts.C = linops.Identity(size(KH,1),KH.rowSplits);
 opts.Q = [];
 opts.yerr_mask = true(M,1);
 opts.Jerr_mask = true(N,1);
@@ -208,7 +208,7 @@ if numel(opts.C.rowSplits) ~= numel(opts.C.colSplits)
     error('ffd:input:C:diagonal','C must be block diagonal');
 end
 
-if size(opts.C,2) ~= size(KH,1) || ~isequal(opts.C.colSplits,KH.rowSplits)
+if size(opts.C,2) ~= size(KH,1) || ~isequal(opts.C.colSplits(:),KH.rowSplits(:))
     error('ffd:input:C:compatible',...
           'C''s column partitioning must be identical to K''s row partitioning');
 end
@@ -398,7 +398,7 @@ for i=1:opts.L
     state.fval_pre = 0;
     for yIdx=1:yBlocks
         w2_block = w2(yIdx1(yIdx):yIdx2(yIdx));
-        KHX_block = zeros(size(opts.C,2),opts.R);
+        KHX_block = 0;
         for xIdx = 1:xBlocks
             KHX_block = KHX_block + KH.forward(yIdx,xIdx,state.X(xIdx1(xIdx):xIdx2(xIdx),:));
         end
@@ -421,7 +421,7 @@ for i=1:opts.L
             case 'none'
                 state.Ghat = state.G;
             case 'whiten'
-                KHprecondX_block = zeros(size(opts.C,2),opts.R);
+                KHprecondX_block = 0;
                 for xIdx = 1:xBlocks
                     KHprecondX_block = KHprecondX_block + KH.forward(yIdx,xIdx,state.precondX(xIdx1(xIdx):xIdx2(xIdx),:));
                     state.Ghat(xIdx1(xIdx):xIdx2(xIdx),:) = ...

@@ -20,8 +20,8 @@ classdef Identity < linops.Blockwise
             end
             obj.m = n;
             obj.n = n;
-            obj.rowSplits = splits;
-            obj.colSplits = splits;
+            obj.rowSplits = splits(:);
+            obj.colSplits = splits(:)';
             obj.blockSizes = diff([1; splits(:); n+1]);
             if sum(abs(obj.blockSizes)) ~= n
                 error('linops:Identity:IncorrectSplits',...
