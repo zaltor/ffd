@@ -20,7 +20,8 @@ classdef Status < handle
         
         function subsref(obj, args)
             opts = args.subs{1};
-            state = args.subs{2};
+            % consts = args.subs{2}; % not used
+            state = args.subs{3};
             if ~opts.verbose
                 return;
             end

@@ -131,12 +131,12 @@ function [X, iterations] = ffd(y, KH, varargin)
 %      FFD(..., 'cg', false, ...) will disable conjugate gradient and cause
 %      the step direction to be simply the (preconditioned) gradient.
 %
-%      FFD(..., 'precond', 'none', ...) will force FFD to not use
+%      FFD(..., 'precond', ffd.precond.None, ...) will force FFD to not use
 %      preconditioning
 %
-%      FFD(..., 'precond', 'whiten', ...) will use preconditioning to
-%      reduce the negative effects of factorization. This is the default
-%      behavior.
+%      FFD(..., 'precond', ffd.precond.Equalize, ...) will use mode energy
+%      equalization-based preconditioning to reduce the negative effects of
+%      factorization.  This is the default behavior.
 %
 %      FFD(..., 'Q', Q, ...) will add an energy minimization term
 %      trace((Q*X)*(Q*X)') to the merit function, where Q is a
@@ -157,104 +157,112 @@ function [X, iterations] = ffd(y, KH, varargin)
 %      array (i.e. the same size as Y), and an element is true if the
 %      corresponding element in Y is to be used for RMS error calculation.
 
+% set up constants (with respect to iteration)
+consts = struct;
+
 % check for valid y and extract size
 if size(y,1) ~= numel(y)
     error('ffd:input:y','y must be an M-by-1 vector');
 end
-M = size(y,1);
+consts.M = size(y,1);
+consts.y = y;
+clear y;
 
 % check for valid KH and extract size and partitioning
 if ~isa(KH, 'linops.Blockwise')
     error('ffd:input:KH','KH must be a linops.Blockwise object');
 end
-N = size(KH,2);
-xBlocks = KH.colBlocks;
-xIdx1 = KH.colFirst(1:xBlocks);
-xIdx2 = KH.colLast(1:xBlocks);
+consts.N = size(KH,2);
+consts.xBlocks = KH.colBlocks;
+consts.xIdx1 = KH.colFirst(1:consts.xBlocks);
+consts.xIdx2 = KH.colLast(1:consts.xBlocks);
+consts.KH = KH;
+clear KH;
 
 % get options
 opts = struct;
 opts.L = 1000;
 opts.w = [];
 opts.X0 = 'white';
-opts.R = N;
+opts.R = consts.N;
 opts.Jthe = [];
 opts.Xthe = [];
 opts.verbose = true;
 opts.callback = ffd.callbacks.Status(1);
-opts.precond = 'whiten';
+opts.precond = ffd.precond.Equalize;
 opts.cg = true;
 opts.rs = RandStream.getGlobalStream;
-opts.C = linops.Identity(size(KH,1),KH.rowSplits);
+opts.C = linops.Identity(size(consts.KH,1),consts.KH.rowSplits);
 opts.Q = [];
-opts.yerr_mask = true(M,1);
-opts.Jerr_mask = true(N,1);
+opts.yerr_mask = true(consts.M,1);
+opts.Jerr_mask = true(consts.N,1);
 
 opts = mhelpers.getopts(opts, varargin{:});
 
 % size of X
-Xsize = [N, opts.R];
+consts.Xsize = [consts.N, opts.R];
+
+% precalculate w^2
+if isempty(opts.w)
+    consts.w2 = true(consts.M,1);
+else
+    consts.w2 = opts.w.*conj(opts.w);
+end
 
 % check for valid C object and extract paritioning
 if ~isa(opts.C, 'linops.Blockwise')
     error('ffd:input:C:type','C must be a linops.Blockwise object');
 end
 
-if size(opts.C, 1) ~= M
-    error('ffd:input:C:rows','C must have a total of %d rows', M);
+if size(opts.C, 1) ~= consts.M
+    error('ffd:input:C:rows','C must have a total of %d rows', consts.M);
 end
 
 if numel(opts.C.rowSplits) ~= numel(opts.C.colSplits)
     error('ffd:input:C:diagonal','C must be block diagonal');
 end
 
-if size(opts.C,2) ~= size(KH,1) || ~isequal(opts.C.colSplits(:),KH.rowSplits(:))
+if size(opts.C,2) ~= size(consts.KH,1) || ...
+        ~isequal(opts.C.colSplits(:),consts.KH.rowSplits(:))
     error('ffd:input:C:compatible',...
           'C''s column partitioning must be identical to K''s row partitioning');
 end
 
-yBlocks = opts.C.rowBlocks;
-yIdx1 = opts.C.rowFirst(1:yBlocks);
-yIdx2 = opts.C.rowLast(1:yBlocks);
+consts.yBlocks = opts.C.rowBlocks;
+consts.yIdx1 = opts.C.rowFirst(1:consts.yBlocks);
+consts.yIdx2 = opts.C.rowLast(1:consts.yBlocks);
 
 % check for valid Q object and extract partitioning
 if isempty(opts.Q)
-    opts.Q = linops.Matrix(sparse(0,N));
+    opts.Q = linops.Matrix(sparse(0,consts.N));
 end
     
 if ~isa(opts.Q, 'linops.Blockwise')
     error('ffd:input:Q:type','Q must either be empty or a linops.Blockwise object');
 end
 
-if size(opts.Q,2) ~= N
-    error('ffd:input:Q:cols','Q must have %d columns', N);
+if size(opts.Q,2) ~= consts.N
+    error('ffd:input:Q:cols','Q must have %d columns', consts.N);
 end
 
-xxBlocks = opts.Q.colBlocks;
-xxIdx1 = opts.Q.colFirst(1:xxBlocks);
-xxIdx2 = opts.Q.colLast(1:xxBlocks);
-QxxBlocks = opts.Q.rowBlocks;
+consts.xxBlocks = opts.Q.colBlocks;
+consts.xxIdx1 = opts.Q.colFirst(1:consts.xxBlocks);
+consts.xxIdx2 = opts.Q.colLast(1:consts.xxBlocks);
+consts.QxxBlocks = opts.Q.rowBlocks;
 
-% precalculate w^2
-if isempty(opts.w)
-    w2 = true(M,1);
-else
-    w2 = opts.w.*conj(opts.w);
-end
-
-compareX = false;
-compareJ = false;
+consts.compareX = false;
+consts.compareJ = false;
 
 % Check for valid Xthe or Jthe
 if ~isempty(opts.Xthe)
-    if isequal(size(opts.Xthe),Xsize)
-        compareX = true;
+    if isequal(size(opts.Xthe),consts.Xsize)
+        consts.compareX = true;
     else
         error('ffd:input:Xthe', 'invalid Xthe size');
     end
 elseif ~isempty(opts.Jthe)
-    if isequal(size(opts.Jthe),[N, N])
-        compareJ = true;
+    if isequal(size(opts.Jthe),[consts.N, consts.N])
+        consts.compareJ = true;
     else
         error('ffd:input:Jthe', 'invalid Jthe size');
     end
@@ -268,12 +276,12 @@ if nargout > 1
     iterations.G2s = zeros(opts.L,1);
     iterations.S2s = zeros(opts.L,1);
     iterations.ts = zeros(opts.L,1);
-    if compareJ || compareX
+    if consts.compareJ || consts.compareX
         iterations.Jerrs = zeros(opts.L,1);
     end
 end
 
-% the current state of the algorithm
+% the current state of the algorithm (varies per iteration)
 state = struct;
 
 % Generate initial guess
@@ -281,17 +289,17 @@ if strcmp(opts.X0,'white') == true
     if opts.verbose
         fprintf('Generating random initial value for X...\n');
     end
-    state.X = opts.rs.randn(Xsize) + 1j*opts.rs.randn(Xsize);
+    state.X = opts.rs.randn(consts.Xsize) + 1j*opts.rs.randn(consts.Xsize);
     % forward propagate X and rescale X so that total intensity == y's
     total_intensity = 0;
-    for yIdx = 1:yBlocks
-        for xIdx = 1:xBlocks
-            KHX_block = KH.forward(yIdx,xIdx,state.X(xIdx1(xIdx):xIdx2(xIdx),:));
+    for yIdx = 1:consts.yBlocks
+        for xIdx = 1:consts.xBlocks
+            KHX_block = consts.KH.forward(yIdx,xIdx,state.X(consts.xIdx1(xIdx):consts.xIdx2(xIdx),:));
             total_intensity = total_intensity + sum(opts.C.forward(yIdx,yIdx,sum(KHX_block.*conj(KHX_block),2)));
         end
     end
     clear KHX_block;
-    scaling = sqrt(sum(y)/total_intensity);
+    scaling = sqrt(sum(consts.y)/total_intensity);
     state.X = scaling*state.X;
 elseif strcmp(opts.X0,'guess') == true
     if opts.verbose
@@ -300,27 +308,27 @@ elseif strcmp(opts.X0,'guess') == true
     state.X = zeros(Xsize);
     for yIdx = 1:yBlocks
         for xIdx = 1:xBlocks
-            ytemp = repmat(sqrt(y(yIdx1(yIdx):yIdx2(yIdx))),[1 Xsize(2)]) .* ...
-                    exp(2j*pi*opts.rs.rand([yIdx2(yIdx)-yIdx1(yIdx)+1,Xsize(2)]));
+            ytemp = repmat(sqrt(consts.y(consts.yIdx1(yIdx):consts.yIdx2(yIdx))),[1 consts.Xsize(2)]) .* ...
+                    exp(2j*pi*opts.rs.rand([consts.yIdx2(yIdx)-consts.yIdx1(yIdx)+1,consts.Xsize(2)]));
             ytemp = opts.C.adjoint(yIdx,yIdx,ytemp);
-            state.X(xIdx1(xIdx):xIdx2(xIdx),:) = ...
-                state.X(xIdx1(xIdx):xIdx2(xIdx),:) + KH.adjoint(yIdx,xIdx,ytemp);
+            state.X(consts.xIdx1(xIdx):consts.xIdx2(xIdx),:) = ...
+                state.X(consts.xIdx1(xIdx):consts.xIdx2(xIdx),:) + consts.KH.adjoint(yIdx,xIdx,ytemp);
             clear ytemp;
         end
     end
     % forward propagate X and rescale X so that total intensity == y's
     total_intensity = 0;
-    for yIdx = 1:yBlocks
-        for xIdx = 1:xBlocks
-            KHX_block = KH.forward(yIdx,xIdx,state.X(xIdx1(xIdx):xIdx2(xIdx),:));
+    for yIdx = 1:consts.yBlocks
+        for xIdx = 1:consts.xBlocks
+            KHX_block = consts.KH.forward(yIdx,xIdx,state.X(consts.xIdx1(xIdx):consts.xIdx2(xIdx),:));
             total_intensity = total_intensity + sum(opts.C.forward(yIdx,yIdx,sum(KHX_block.*conj(KHX_block),2)));
         end
     end
     clear KHX_block;
-    scaling = sqrt(sum(y)/total_intensity);
+    scaling = sqrt(sum(consts.y)/total_intensity);
     state.X = scaling*state.X;
 else
-    if ~isequal(size(opts.X0),Xsize)
+    if ~isequal(size(opts.X0),consts.Xsize)
         error('ffd:input:X0', 'X0 needs to be of size %s%d', sprintf('%d-by-',Xsize(1:end-1)), Xsize(end));
     end
     if opts.verbose
@@ -331,15 +339,15 @@ end
 
 % fill in rest of state with initial values
 state.iteration = 0;
-state.precondX = state.X;
-state.G = zeros(Xsize);
-state.Ghat = zeros(Xsize);
+state.delta = zeros(consts.M,1);
+state.G = zeros(consts.Xsize);
+state.Ghat = zeros(consts.Xsize);
 state.fval = 0;
 state.fval_pre = 0;
 state.yerr = 0;
-state.S = zeros(Xsize);
-state.G_previous = zeros(Xsize);
-state.Ghat_previous = zeros(Xsize);
+state.S = zeros(consts.Xsize);
+state.G_previous = zeros(consts.Xsize);
+state.Ghat_previous = zeros(consts.Xsize);
 state.quartic = zeros(1,5);
 state.cubic = zeros(1,4);
 state.fval_next = 0;
@@ -348,130 +356,76 @@ state.alpha = 0;
 state.beta = 0;
 state.t = 0;
 
-if compareX
-    state.Jerr = ffd.factored_distance(opts.Xthe, state.X)/N;
-elseif compareJ
+if consts.compareX
+    state.Jerr = ffd.factored_distance(opts.Xthe, state.X)/consts.N;
+elseif consts.compareJ
     % set initial value of J for error comparison
     state.J = state.X*state.X';
-    state.Jerr = norm(opts.Jthe-state.J,'fro')/N;
+    state.Jerr = norm(opts.Jthe-state.J,'fro')/consts.N;
 end
 
 % do initial callback
-opts.callback(opts,state);
+opts.callback(opts,consts,state);
 
 start_time = tic;
 
 for i=1:opts.L
+
+    % initialize
     state.iteration = i;
-    % preconditioning to ameliorate distortion effects caused by
-    % factorization
-    switch(opts.precond)
-        case 'none'
-            state.precondX = state.X;
-        case 'whiten'
-            [U_,S_,V_] = svd(state.X, 'econ');
-            if S_(1,1) == 0
-                % X is the zero matrix, so make up something
-                if Xsize(1) > Xsize(2)
-                    X_fake = repmat(eye(Xsize(2)),[ceil(Xsize(1)/Xsize(2)),1]);
-                else
-                    X_fake = repmat(eye(Xsize(1)),[1,ceil(Xsize(2)/Xsize(1))]);
-                end
-                state.precondX = X_fake(1:Xsize(1),1:Xsize(2));
-                clear X_fake;
-            else
-                new_S = sqrt(trace(S_.^2)/size(S_,1))*eye(size(S_,1));
-                state.precondX = U_*new_S*V_';
-                clear new_S;
-            end
-            clear U_;
-            clear S_;
-            clear V_;
-    end
-    
-    % compute error in intensity and steepest descent direction as well as
-    % preconditioned steepest descent direction
-    state.G = zeros(Xsize);
-    state.Ghat = zeros(Xsize);
-    state.fval = 0;
-    state.yerr = 0;
-    state.fval_pre = 0;
-    for yIdx=1:yBlocks
-        w2_block = w2(yIdx1(yIdx):yIdx2(yIdx));
+    state.G = zeros(consts.Xsize);
+    state.Ghat = zeros(consts.Xsize);
+
+    % compute error in intensity and steepest descent direction
+    for yIdx=1:consts.yBlocks
+        w2_block = consts.w2(consts.yIdx1(yIdx):consts.yIdx2(yIdx));
         KHX_block = 0;
-        for xIdx = 1:xBlocks
-            KHX_block = KHX_block + KH.forward(yIdx,xIdx,state.X(xIdx1(xIdx):xIdx2(xIdx),:));
+        for xIdx = 1:consts.xBlocks
+            KHX_block = KHX_block + consts.KH.forward(yIdx,xIdx,state.X(consts.xIdx1(xIdx):consts.xIdx2(xIdx),:));
         end
         y_block = opts.C.forward(yIdx,yIdx,sum(KHX_block.*conj(KHX_block),2));
-        delta_block = y(yIdx1(yIdx):yIdx2(yIdx)) - y_block;
-        mask_block = opts.yerr_mask(yIdx1(yIdx):yIdx2(yIdx));
+        delta_block = consts.y(consts.yIdx1(yIdx):consts.yIdx2(yIdx)) - y_block;
+        state.delta(consts.yIdx1(yIdx):consts.yIdx2(yIdx)) = delta_block;
         E = diag(sparse(opts.C.adjoint(yIdx,yIdx,delta_block.*w2_block)));
-        fval_inc = w2_block'*(delta_block.*conj(delta_block));
-        state.fval = state.fval + fval_inc;
-        state.fval_pre = state.fval_pre + w2_block'*(delta_block.*mask_block.*conj(delta_block));
-        state.yerr = state.yerr + mask_block'*(delta_block.*conj(delta_block));
         clear delta_block;
-        for xIdx = 1:xBlocks
-            state.G(xIdx1(xIdx):xIdx2(xIdx),:) = ...
-                state.G(xIdx1(xIdx):xIdx2(xIdx),:) + ...
-                    4*KH.adjoint(yIdx,xIdx,E*KHX_block);
+        for xIdx = 1:consts.xBlocks
+            state.G(consts.xIdx1(xIdx):consts.xIdx2(xIdx),:) = ...
+                state.G(consts.xIdx1(xIdx):consts.xIdx2(xIdx),:) + ...
+                    4*consts.KH.adjoint(yIdx,xIdx,E*KHX_block);
         end
         clear KHX_block;
-        switch(opts.precond)
-            case 'none'
-                state.Ghat = state.G;
-            case 'whiten'
-                KHprecondX_block = 0;
-                for xIdx = 1:xBlocks
-                    KHprecondX_block = KHprecondX_block + KH.forward(yIdx,xIdx,state.precondX(xIdx1(xIdx):xIdx2(xIdx),:));
-                    state.Ghat(xIdx1(xIdx):xIdx2(xIdx),:) = ...
-                        state.Ghat(xIdx1(xIdx):xIdx2(xIdx),:) + ...
-                            4*KH.adjoint(yIdx,xIdx,E*KHprecondX_block);
-                end
-                clear KHprecondX_block;
-        end
     end
     
-    for QxxIdx=1:QxxBlocks
+    % compute merit function value and error metrics
+    temp = state.delta.*conj(state.delta);
+    state.fval = consts.w2'*temp;
+    state.fval_pre = consts.w2'*(temp.*opts.yerr_mask);
+    state.yerr = sqrt((opts.yerr_mask'*temp)/sum(opts.yerr_mask));
+    clear temp;
+    if consts.compareX
+        state.Jerr = ffd.factored_distance(opts.Xthe, state.X)/consts.N;
+    elseif consts.compareJ
+        state.Jerr = norm(opts.Jthe-state.J,'fro')/consts.N;
+    end
+    
+    % add quadratic (regularizer) component
+    for QxxIdx=1:consts.QxxBlocks
         Qxx_block = 0;
-        for xxIdx=1:xxBlocks
+        for xxIdx=1:consts.xxBlocks
             Qxx_block = Qxx_block + ...
-                opts.Q.forward(QxxIdx,xxIdx,state.X(xxIdx1(xxIdx):xxIdx2(xxIdx),:));
+                opts.Q.forward(QxxIdx,xxIdx,state.X(consts.xxIdx1(xxIdx):consts.xxIdx2(xxIdx),:));
         end
         state.fval = state.fval + Qxx_block(:)'*Qxx_block(:);
-        for xxIdx=1:xxBlocks
-            state.G(xxIdx1(xxIdx):xxIdx2(xxIdx),:) = ...
-                state.G(xxIdx1(xxIdx):xxIdx2(xxIdx),:) - ...
+        for xxIdx=1:consts.xxBlocks
+            state.G(consts.xxIdx1(xxIdx):consts.xxIdx2(xxIdx),:) = ...
+                state.G(consts.xxIdx1(xxIdx):consts.xxIdx2(xxIdx),:) - ...
                     2*opts.Q.adjoint(QxxIdx,xxIdx,Qxx_block);
         end
         clear Qxx_block;
-        switch(opts.precond)
-            case 'none'
-                state.Ghat = state.G;   
-            case 'whiten'
-                Qxx_block = 0;
-                for xxIdx=1:xxBlocks
-                    Qxx_block = Qxx_block + ...
-                        opts.Q.forward(QxxIdx,xxIdx,state.precondX(xxIdx1(xxIdx):xxIdx2(xxIdx),:));
-                end
-                for xxIdx=1:xxBlocks
-                    state.Ghat(xxIdx1(xxIdx):xxIdx2(xxIdx),:) = ...
-                        state.Ghat(xxIdx1(xxIdx):xxIdx2(xxIdx),:) - ...
-                            2*opts.Q.adjoint(QxxIdx,xxIdx,Qxx_block);
-                end
-                clear Qxx_block;
-        end
     end
-
-    % convert total squared error into rms error
-    state.yerr = sqrt(state.yerr/sum(opts.yerr_mask));
-
-    % compute Jerr
-    if compareX
-        state.Jerr = ffd.factored_distance(opts.Xthe, state.X)/N;
-    elseif compareJ
-        state.Jerr = norm(opts.Jthe-J,'fro')/N;
-    end
+    
+    % preconditioning if needed
+    state.Ghat = opts.precond(opts, consts, state);
     
     % compute conjugate gradient
     if i == 1 || ~opts.cg
@@ -495,21 +449,19 @@ for i=1:opts.L
     % compute the single-variable state.quartic corresponding to the merit
     % function along the search direction S
     state.quartic = [0 0 0 0 0];
-    for yIdx=1:yBlocks
+    for yIdx=1:consts.yBlocks
         KHX_block = 0;
         KHS_block = 0;
-        for xIdx=1:xBlocks
-            KHX_block = KHX_block + KH.forward(yIdx,xIdx,state.X(xIdx1(xIdx):xIdx2(xIdx),:));
-            KHS_block = KHS_block + KH.forward(yIdx,xIdx,state.S(xIdx1(xIdx):xIdx2(xIdx),:));
+        for xIdx=1:consts.xBlocks
+            KHX_block = KHX_block + consts.KH.forward(yIdx,xIdx,state.X(consts.xIdx1(xIdx):consts.xIdx2(xIdx),:));
+            KHS_block = KHS_block + consts.KH.forward(yIdx,xIdx,state.S(consts.xIdx1(xIdx):consts.xIdx2(xIdx),:));
         end
-        y_block = opts.C.forward(yIdx,yIdx,sum(KHX_block.*conj(KHX_block),2));
-        delta_block = y(yIdx1(yIdx):yIdx2(yIdx)) - y_block;
-        clear y_block;
         b_block = -opts.C.forward(yIdx,yIdx,sum(2*real(KHX_block.*conj(KHS_block)),2));
         clear KHX_block;
         c_block = -opts.C.forward(yIdx,yIdx,sum(KHS_block.*conj(KHS_block),2));
         clear KHS_block;
-        w2_block = w2(yIdx1(yIdx):yIdx2(yIdx));
+        delta_block = state.delta(consts.yIdx1(yIdx):consts.yIdx2(yIdx));
+        w2_block = consts.w2(consts.yIdx1(yIdx):consts.yIdx2(yIdx));
         state.quartic = state.quartic + w2_block'*[c_block.^2,2*c_block.*b_block,2*c_block.*delta_block+b_block.^2, 2*b_block.*delta_block, delta_block.^2];
         clear b_block;
         clear c_block;
@@ -518,12 +470,12 @@ for i=1:opts.L
     end
     
     % add in energy minimization regularizer to the state.quartic
-    for QxxIdx=1:QxxBlocks
+    for QxxIdx=1:consts.QxxBlocks
         temp1 = 0;
         temp2 = 0;
-        for xxIdx=1:xxBlocks
-            temp1 = temp1 + opts.Q.forward(QxxIdx,xxIdx,state.S(xxIdx1(xxIdx):xxIdx2(xxIdx),:));
-            temp2 = temp2 + opts.Q.forward(QxxIdx,xxIdx,state.X(xxIdx1(xxIdx):xxIdx2(xxIdx),:));
+        for xxIdx=1:consts.xxBlocks
+            temp1 = temp1 + opts.Q.forward(QxxIdx,xxIdx,state.S(consts.xxIdx1(xxIdx):consts.xxIdx2(xxIdx),:));
+            temp2 = temp2 + opts.Q.forward(QxxIdx,xxIdx,state.X(consts.xxIdx1(xxIdx):consts.xxIdx2(xxIdx),:));
         end
         quadratic = [temp1(:)'*temp1(:), 2*real(temp1(:)'*temp2(:)), temp2(:)'*temp2(:)];
         clear temp1;
@@ -547,17 +499,17 @@ for i=1:opts.L
         iterations.G2s(i) = state.G(:)'*state.G(:);
         iterations.S2s(i) = state.S(:)'*state.S(:);
         iterations.ts(i) = state.t;
-        if compareJ || compareX
+        if consts.compareJ || consts.compareX
             iterations.Jerrs(i) = state.Jerr;
         end
     end
     
     % do callback
-    opts.callback(opts,state);
+    opts.callback(opts,consts,state);
     
     % update
     state.X = state.X+state.alpha*state.S;
-    if compareJ
+    if consts.compareJ
         state.J = state.X*state.X';
     end
 end % end iterations
