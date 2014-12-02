@@ -190,7 +190,7 @@ opts.Q = [];
 opts.yerr_mask = true(M,1);
 opts.Jerr_mask = true(N,1);
 
-opts = getopts(opts, varargin{:});
+opts = mhelpers.getopts(opts, varargin{:});
 
 % size of X
 Xsize = [N, opts.R];

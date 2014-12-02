@@ -1,3 +1,6 @@
 [submodule "+linops"]
 	path = +linops
 	url = https://github.com/zaltor/linops
+[submodule "private/+mhelpers"]
+	path = +mhelpers
+	url = https://github.com/zaltor/mhelpers
