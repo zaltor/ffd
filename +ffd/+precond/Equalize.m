@@ -7,7 +7,7 @@ classdef Equalize < handle
     %   energies redistributed evenly.
 
     methods
-        function Ghat = subsref(~, args)
+        function [Ghat, reset_cg] = subsref(~, args)
             opts = args.subs{1};
             consts = args.subs{2};
             state = args.subs{3};
@@ -64,6 +64,8 @@ classdef Equalize < handle
                 end
                 clear Qxx_block;
             end
+            
+            reset_cg = false;
         end
     end
 end

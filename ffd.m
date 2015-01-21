@@ -425,11 +425,12 @@ for i=1:opts.L
     end
     
     % preconditioning if needed
-    state.Ghat = opts.precond(opts, consts, state);
+    [state.Ghat, reset_cg] = opts.precond(opts, consts, state);
     
     % compute conjugate gradient
-    if i == 1 || ~opts.cg
+    if i == 1 || ~opts.cg || reset_cg
         % first iteration, no conjugate gradient
+        state.beta = 0;
         state.S = state.Ghat;
         state.G_previous = state.G;
         state.Ghat_previous = state.Ghat;
