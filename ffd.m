@@ -425,7 +425,7 @@ for i=1:opts.L
     end
     
     % preconditioning if needed
-    [state.Ghat, reset_cg] = opts.precond(opts, consts, state);
+    [state.Ghat, reset_cg, state.Ghat_previous] = opts.precond(opts, consts, state);
     
     % compute conjugate gradient
     if i == 1 || ~opts.cg || reset_cg
