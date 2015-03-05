@@ -122,7 +122,7 @@ classdef Blockwise < handle
             %   A1, A2, ... into a single operator by concatenating their 
             %   outputs (rows) as long as all of A1, A2, ... have the same 
             %   column block pattern.
-            A = linops.MultiplexedOp(varargin');
+            A = linops.Multiplexed(varargin');
         end
         
         function A = horzcat(varargin)
@@ -131,7 +131,7 @@ classdef Blockwise < handle
             %   A1, A2, ... into a single operator by concatenating their 
             %   inputs (columns) as long as all of A1, A2, ... have the 
             %   same row block pattern.
-            A = linops.MultiplexedOp(varargin);
+            A = linops.Multiplexed(varargin);
         end
         
         function A = cat(dim, varargin)
@@ -147,13 +147,45 @@ classdef Blockwise < handle
             %   more information.
             switch(dim)
                 case 1
-                    A = linops.MultiplexedOp(varargin');
+                    A = linops.Multiplexed(varargin');
                 case 2
-                    A = linops.MultiplexedOp(varargin);
+                    A = linops.Multiplexed(varargin);
                 otherwise
                     error('linops:Blockwise:cat:DimNotSupported',...
                           'concatenation not supported along dimension %d',...
                           dim);
+            end
+        end
+        
+        function y = forwardAll(obj, x)
+            r = size(x,2);
+            y = zeros(obj.m, r);
+            for s=1:obj.rowBlocks
+                rowFirst = obj.rowFirst(s);
+                rowLast = obj.rowLast(s);
+                temp = 0;
+                for t=1:obj.colBlocks
+                    colFirst = obj.colFirst(t);
+                    colLast = obj.colLast(t);
+                    temp = temp + obj.forward(s,t,x(colFirst:colLast,:));
+                end
+                y(rowFirst:rowLast,:) = temp;
+            end
+        end
+        
+        function x = adjointAll(obj, y)
+            r = size(y,2);
+            x = zeros(obj.n, r);
+            for t=1:obj.colBlocks
+                colFirst = obj.colFirst(t);
+                colLast = obj.colLast(t);
+                temp = 0;
+                for s=1:obj.rowBlocks
+                    rowFirst = obj.rowFirst(s);
+                    rowLast = obj.rowLast(s);
+                    temp = temp + obj.adjoint(s,t,y(rowFirst:rowLast,:));
+                end
+                x(colFirst:colLast,:) = temp;
             end
         end
         

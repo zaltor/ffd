@@ -105,14 +105,14 @@ classdef Multiplexed < linops.Blockwise
         end
         
         function yBlock = forward(obj, s, t, xBlock)
-            indexes = obj.lookup(s,t);
-            src = obj.sources(indexes(1),indexes(2));
+            indexes = obj.lookup{s,t};
+            src = obj.sources{indexes(1),indexes(2)};
             yBlock = src.forward(indexes(3),indexes(4),xBlock);
         end
         
         function xBlock = adjoint(obj, s, t, yBlock)
-            indexes = obj.lookup(s,t);
-            src = obj.sources(indexes(1),indexes(2));
+            indexes = obj.lookup{s,t};
+            src = obj.sources{indexes(1),indexes(2)};
             xBlock = src.adjoint(indexes(3),indexes(4),yBlock);
         end
 
