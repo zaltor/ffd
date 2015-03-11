@@ -6,24 +6,34 @@ classdef Steepest < handle
         function subsref(~, args)
             env = args.subs{1};
             
-            % ready G for accumulation
+            % ready for accumulation
             env.state.G(:) = 0;
+            env.state.fval = 0;
+            env.state.fval_pre = 0;
+            env.state.yerr = 0;
             
-            % prepare delta if needed
+            % prepare delta if needed (TODO: remove me after refactoring)
             if numel(env.state.delta) ~= env.consts.M
                 env.state.delta = zeros(env.consts.M,1);
             end
 
             % compute error in intensity and steepest descent direction
             for yIdx=1:env.consts.yBlocks
-                w2_block = env.consts.w2(env.consts.yIdx1(yIdx):env.consts.yIdx2(yIdx));
+                yStart = env.consts.yIdx1(yIdx);
+                yEnd = env.consts.yIdx2(yIdx);
+                w2_block = env.consts.w2(yStart:yEnd);
                 KHX_block = 0;
                 for xIdx = 1:env.consts.xBlocks
                     KHX_block = KHX_block + env.consts.KH.forward(yIdx,xIdx,env.state.X(env.consts.xIdx1(xIdx):env.consts.xIdx2(xIdx),:));
                 end
                 y_block = env.opts.C.forward(yIdx,yIdx,sum(KHX_block.*conj(KHX_block),2));
-                delta_block = env.consts.y(env.consts.yIdx1(yIdx):env.consts.yIdx2(yIdx)) - y_block;
-                env.state.delta(env.consts.yIdx1(yIdx):env.consts.yIdx2(yIdx)) = delta_block;
+                delta_block = env.consts.y(yStart:yEnd) - y_block;
+                delta2 = delta_block.*conj(delta_block);
+                yerr_mask_block = env.opts.yerr_mask(yStart:yEnd);
+                env.state.fval = env.state.fval + w2_block'*delta2;
+                env.state.fval_pre = env.state.fval_pre + w2_block'*(delta2.*yerr_mask_block);
+                env.state.yerr = env.state.yerr + delta2'*yerr_mask_block;
+                env.state.delta(yStart:yEnd) = delta_block; % TODO: remove me after refactoring
                 E = diag(sparse(env.opts.C.adjoint(yIdx,yIdx,delta_block.*w2_block)));
                 clear delta_block;
                 for xIdx = 1:env.consts.xBlocks
@@ -34,14 +44,10 @@ classdef Steepest < handle
                 clear KHX_block;
             end
 
-            % compute merit function value and error metrics
-            temp = env.state.delta.*conj(env.state.delta);
-            env.state.fval = env.consts.w2'*temp;
-            env.state.fval_pre = env.consts.w2'*(temp.*env.opts.yerr_mask);
-            env.state.yerr = sqrt((env.opts.yerr_mask'*temp)/sum(env.opts.yerr_mask));
-            clear temp;
+            % compute the rms error
+            env.state.yerr = sqrt(env.state.yerr/sum(env.opts.yerr_mask));
 
-            % add quadratic (regularizer) component
+            % add quadratic (regularizer) component to merit function
             for QxxIdx=1:env.consts.QxxBlocks
                 Qxx_block = 0;
                 for xxIdx=1:env.consts.xxBlocks
