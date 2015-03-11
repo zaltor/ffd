@@ -129,6 +129,9 @@ function [X, iterations] = ffd(y, KH, varargin)
 %      before the first iteration and after each iteration, where ENV holds
 %      all the current state variables, etc.
 %
+%      FFD(..., 'descent', ffd.descent.Steepest, ...) will use steepest
+%      descent as the step direction before conjugate gradients
+%
 %      FFD(..., 'cg', false, ...) will disable conjugate gradient and cause
 %      the step direction to be simply the (preconditioned) gradient.
 %
@@ -192,6 +195,7 @@ env.opts.R = env.consts.N;
 env.opts.Jthe = [];
 env.opts.Xthe = [];
 env.opts.verbose = true;
+env.opts.descent = ffd.descent.Steepest;
 env.opts.callback = ffd.callback.Status(1);
 env.opts.precond = ffd.precond.Equalize;
 env.opts.cg = true;
@@ -343,13 +347,14 @@ end
 
 % fill in rest of state with initial values
 env.state.iteration = 0;
-env.state.delta = zeros(env.consts.M,1);
+env.state.delta = []; %zeros(env.consts.M,1);
 env.state.G = zeros(env.consts.Xsize);
 env.state.Ghat = zeros(env.consts.Xsize);
 env.state.fval = 0;
 env.state.fval_pre = 0;
 env.state.yerr = 0;
 env.state.S = zeros(env.consts.Xsize);
+env.state.reset_cg = false;
 env.state.G_previous = zeros(env.consts.Xsize);
 env.state.Ghat_previous = zeros(env.consts.Xsize);
 env.state.quartic = zeros(1,5);
@@ -375,70 +380,27 @@ start_time = tic;
 
 for i=1:env.opts.L
 
-    % initialize
     env.state.iteration = i;
-    env.state.G = zeros(env.consts.Xsize);
-    env.state.Ghat = zeros(env.consts.Xsize);
 
-    % compute error in intensity and steepest descent direction
-    for yIdx=1:env.consts.yBlocks
-        w2_block = env.consts.w2(env.consts.yIdx1(yIdx):env.consts.yIdx2(yIdx));
-        KHX_block = 0;
-        for xIdx = 1:env.consts.xBlocks
-            KHX_block = KHX_block + env.consts.KH.forward(yIdx,xIdx,env.state.X(env.consts.xIdx1(xIdx):env.consts.xIdx2(xIdx),:));
-        end
-        y_block = env.opts.C.forward(yIdx,yIdx,sum(KHX_block.*conj(KHX_block),2));
-        delta_block = env.consts.y(env.consts.yIdx1(yIdx):env.consts.yIdx2(yIdx)) - y_block;
-        env.state.delta(env.consts.yIdx1(yIdx):env.consts.yIdx2(yIdx)) = delta_block;
-        E = diag(sparse(env.opts.C.adjoint(yIdx,yIdx,delta_block.*w2_block)));
-        clear delta_block;
-        for xIdx = 1:env.consts.xBlocks
-            env.state.G(env.consts.xIdx1(xIdx):env.consts.xIdx2(xIdx),:) = ...
-                env.state.G(env.consts.xIdx1(xIdx):env.consts.xIdx2(xIdx),:) + ...
-                    4*env.consts.KH.adjoint(yIdx,xIdx,E*KHX_block);
-        end
-        clear KHX_block;
-    end
-    
-    % compute merit function value and error metrics
-    temp = env.state.delta.*conj(env.state.delta);
-    env.state.fval = env.consts.w2'*temp;
-    env.state.fval_pre = env.consts.w2'*(temp.*env.opts.yerr_mask);
-    env.state.yerr = sqrt((env.opts.yerr_mask'*temp)/sum(env.opts.yerr_mask));
-    clear temp;
     if env.consts.compareX
         env.state.Jerr = ffd.factored_distance(env.opts.Xthe, env.state.X)/env.consts.N;
     elseif env.consts.compareJ
         env.state.Jerr = norm(env.opts.Jthe-env.state.J,'fro')/env.consts.N;
     end
     
-    % add quadratic (regularizer) component
-    for QxxIdx=1:env.consts.QxxBlocks
-        Qxx_block = 0;
-        for xxIdx=1:env.consts.xxBlocks
-            Qxx_block = Qxx_block + ...
-                env.opts.Q.forward(QxxIdx,xxIdx,env.state.X(env.consts.xxIdx1(xxIdx):env.consts.xxIdx2(xxIdx),:));
-        end
-        env.state.fval = env.state.fval + Qxx_block(:)'*Qxx_block(:);
-        for xxIdx=1:env.consts.xxBlocks
-            env.state.G(env.consts.xxIdx1(xxIdx):env.consts.xxIdx2(xxIdx),:) = ...
-                env.state.G(env.consts.xxIdx1(xxIdx):env.consts.xxIdx2(xxIdx),:) - ...
-                    2*env.opts.Q.adjoint(QxxIdx,xxIdx,Qxx_block);
-        end
-        clear Qxx_block;
-    end
-    
-    % preconditioning if needed
-    [env.state.Ghat, reset_cg, env.state.Ghat_previous] = env.opts.precond(env);
+    % calculate the descent direction
+    % writes to:
+    %    env.state.G (steepest descent direction)
+    %    env.state.Ghat (descent direction)
+    %    env.state.reset_cg (set to true to force a cg reset)
+    %    env.state.fval (value of merit function)
+    %    env.state.yerr (rmse of measurements not masked out by yerr_mask)
+    %    env.state.fval_pre (quartic part of merit function not masked out)
+    %    env.state.delta (optional, the error per measurement)
+    env.opts.descent(env);
     
     % compute conjugate gradient
-    if i == 1 || ~env.opts.cg || reset_cg
-        % first iteration, no conjugate gradient
-        env.state.beta = 0;
-        env.state.S = env.state.Ghat;
-        env.state.G_previous = env.state.G;
-        env.state.Ghat_previous = env.state.Ghat;
-    else
+    if env.opts.cg && ~env.state.reset_cg
         % compute conjugate gradient using preconditioned modified 
         % Polak-Ribiere method
         r0 = env.state.G(:);
@@ -449,9 +411,17 @@ for i=1:env.opts.L
         env.state.S = env.state.Ghat + env.state.beta*env.state.S;
         env.state.G_previous = env.state.G;
         env.state.Ghat_previous = env.state.Ghat;
+        clear r0 r1 d0 d1
+    else
+        % no conjugate gradient or during a reset
+        env.state.beta = 0;
+        env.state.S = env.state.Ghat;
+        env.state.G_previous = env.state.G;
+        env.state.Ghat_previous = env.state.Ghat;
+        env.state.reset_cg = false;
     end
-        
-    % compute the single-variable state.quartic corresponding to the merit
+    
+    % compute the single-variable quartic corresponding to the merit
     % function along the search direction S
     env.state.quartic = [0 0 0 0 0];
     for yIdx=1:env.consts.yBlocks
@@ -461,11 +431,16 @@ for i=1:env.opts.L
             KHX_block = KHX_block + env.consts.KH.forward(yIdx,xIdx,env.state.X(env.consts.xIdx1(xIdx):env.consts.xIdx2(xIdx),:));
             KHS_block = KHS_block + env.consts.KH.forward(yIdx,xIdx,env.state.S(env.consts.xIdx1(xIdx):env.consts.xIdx2(xIdx),:));
         end
+        if ~isempty(env.state.delta)
+            delta_block = env.state.delta(env.consts.yIdx1(yIdx):env.consts.yIdx2(yIdx));
+        else
+            delta_block = env.consts.y(env.consts.yIdx1(yIdx):env.consts.yIdx2(yIdx)) ...
+                - env.opts.C.forward(yIdx,yIdx,sum(KHX_block.*conj(KHX_block),2));
+        end
         b_block = -env.opts.C.forward(yIdx,yIdx,sum(2*real(KHX_block.*conj(KHS_block)),2));
         clear KHX_block;
         c_block = -env.opts.C.forward(yIdx,yIdx,sum(KHS_block.*conj(KHS_block),2));
-        clear KHS_block;
-        delta_block = env.state.delta(env.consts.yIdx1(yIdx):env.consts.yIdx2(yIdx));
+        clear KHS_block;            
         w2_block = env.consts.w2(env.consts.yIdx1(yIdx):env.consts.yIdx2(yIdx));
         env.state.quartic = env.state.quartic + w2_block'*[c_block.^2,2*c_block.*b_block,2*c_block.*delta_block+b_block.^2, 2*b_block.*delta_block, delta_block.^2];
         clear b_block;
