@@ -1,7 +1,7 @@
 classdef Status < handle
-    %ffd.callbacks.STATUS Simple status callbacks
+    %ffd.callback.STATUS Simple status callbacks
     %
-    %   ffd.callbacks.STATUS(SEC) creates a callback that displays
+    %   ffd.callback.STATUS(SEC) creates a callback that displays
     %   simple per-iteration status when at least SEC seconds has
     %   transpired since the last status display.  If SEC is missing, then
     %   a default value of 1 second is assumed.
