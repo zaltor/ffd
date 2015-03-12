@@ -24,7 +24,7 @@ classdef Blockwise < handle
     %                            row block s and column block t to yBlock
     %
     %Helper
-    %BLOCKWISE methods:
+    %BLOCKWISE properties (must run Blockwise.update before using):
     %  rowBlocks - Return the number of partitions along rows
     %  rowFirst  - Return the first row of block(s)
     %  rowLast   - Return the last row of block(s)
@@ -32,6 +32,15 @@ classdef Blockwise < handle
     %  colFirst  - Return the first column of block(s)
     %  colLast   - Return the last column of block(s)
 
+    properties
+        rowBlocks;
+        rowFirst;
+        rowLast;
+        colBlocks;
+        colFirst;
+        colLast;
+    end
+    
     properties (Abstract)
         m; % number of rows/output values
         n; % number of columns/input values
@@ -161,15 +170,15 @@ classdef Blockwise < handle
             r = size(x,2);
             y = zeros(obj.m, r);
             for s=1:obj.rowBlocks
-                rowFirst = obj.rowFirst(s);
-                rowLast = obj.rowLast(s);
+                rowFirstCur = obj.rowFirst(s);
+                rowLastCur = obj.rowLast(s);
                 temp = 0;
                 for t=1:obj.colBlocks
-                    colFirst = obj.colFirst(t);
-                    colLast = obj.colLast(t);
-                    temp = temp + obj.forward(s,t,x(colFirst:colLast,:));
+                    colFirstCur = obj.colFirst(t);
+                    colLastCur = obj.colLast(t);
+                    temp = temp + obj.forward(s,t,x(colFirstCur:colLastCur,:));
                 end
-                y(rowFirst:rowLast,:) = temp;
+                y(rowFirstCur:rowLastCur,:) = temp;
             end
         end
         
@@ -177,63 +186,28 @@ classdef Blockwise < handle
             r = size(y,2);
             x = zeros(obj.n, r);
             for t=1:obj.colBlocks
-                colFirst = obj.colFirst(t);
-                colLast = obj.colLast(t);
+                colFirstCur = obj.colFirst(t);
+                colLastCur = obj.colLast(t);
                 temp = 0;
                 for s=1:obj.rowBlocks
-                    rowFirst = obj.rowFirst(s);
-                    rowLast = obj.rowLast(s);
-                    temp = temp + obj.adjoint(s,t,y(rowFirst:rowLast,:));
+                    rowFirstCur = obj.rowFirst(s);
+                    rowLastCur = obj.rowLast(s);
+                    temp = temp + obj.adjoint(s,t,y(rowFirstCur:rowLastCur,:));
                 end
-                x(colFirst:colLast,:) = temp;
+                x(colFirstCur:colLastCur,:) = temp;
             end
         end
         
-        function blocks = rowBlocks(obj)
-            %ROWBLOCKS Return the number of partitions along rows
-            %   A.ROWBLOCKS returns the number of partitions along rows in 
-            %   blockwise linear operator A 
-            blocks = numel(obj.rowSplits)+1;
+        function update(obj)
+            %UPDATE Update helper properties
+            obj.rowBlocks = numel(obj.rowSplits)+1;
+            obj.rowFirst = [1; obj.rowSplits];
+            obj.rowLast = [obj.rowSplits-1; obj.m];
+            obj.colBlocks = numel(obj.colSplits)+1;
+            obj.colFirst = [1, obj.colSplits];
+            obj.colLast = [obj.colSplits-1, obj.n];
         end
         
-        function row = rowFirst(obj, idx)
-            %ROWFIRST Return the first row of block(s)
-            %   A.ROWFIRST(IDX) fetches the index of the first row(s) of A
-            %   in blocks specified by row block indexes IDX
-            temp = [1; obj.rowSplits];
-            row = temp(idx);
-        end
-        
-        function row = rowLast(obj, idx)
-            %ROWLAST Return the last row of block(s)
-            %   A.ROWLAST(IDX) fetches the index of the last row(s) of A
-            %   in blocks specified by row block indexes IDX
-            temp = [obj.rowSplits-1; obj.m];
-            row = temp(idx);
-        end
-        
-        function blocks = colBlocks(obj)
-            %ROWBLOCKS Return the number of partitions along columns
-            %   A.ROWBLOCKS returns the number of partitions along columns
-            %   in blockwise linear operator A 
-            blocks = numel(obj.colSplits)+1;
-        end
-        
-        function col = colFirst(obj, idx)
-            %COLFIRST Return the first column of block(s)
-            %   A.COLFIRST(IDX) fetches the index of the first column(s) of
-            %   A in blocks specified by row block indexes IDX
-            temp = [1, obj.colSplits];
-            col = temp(idx);
-        end
-        
-        function col = colLast(obj, idx)
-            %COLLAST Return the last column of block(s)
-            %   A.COLLAST(IDX) fetches the index of the last column(s) of
-            %   A in blocks specified by row block indexes IDX
-            temp = [obj.colSplits-1, obj.n];
-            col = temp(idx);
-        end
     end
 end
 
