@@ -425,9 +425,9 @@ for i=1:env.opts.L
     % function along the search direction S
     env.state.quartic = [0 0 0 0 0];
     for yIdx=1:env.consts.yBlocks
-        KHX_block = 0;
-        KHS_block = 0;
-        for xIdx=1:env.consts.xBlocks
+        KHX_block = env.consts.KH.forward(yIdx,1,env.state.X(env.consts.xIdx1(1):env.consts.xIdx2(1),:));
+        KHS_block = env.consts.KH.forward(yIdx,1,env.state.S(env.consts.xIdx1(1):env.consts.xIdx2(1),:));
+        for xIdx=2:env.consts.xBlocks
             KHX_block = KHX_block + env.consts.KH.forward(yIdx,xIdx,env.state.X(env.consts.xIdx1(xIdx):env.consts.xIdx2(xIdx),:));
             KHS_block = KHS_block + env.consts.KH.forward(yIdx,xIdx,env.state.S(env.consts.xIdx1(xIdx):env.consts.xIdx2(xIdx),:));
         end
@@ -451,9 +451,9 @@ for i=1:env.opts.L
     
     % add in energy minimization regularizer to the state.quartic
     for QxxIdx=1:env.consts.QxxBlocks
-        temp1 = 0;
-        temp2 = 0;
-        for xxIdx=1:env.consts.xxBlocks
+        temp1 = env.opts.Q.forward(QxxIdx,1,env.state.S(env.consts.xxIdx1(1):env.consts.xxIdx2(1),:));
+        temp2 = env.opts.Q.forward(QxxIdx,1,env.state.X(env.consts.xxIdx1(1):env.consts.xxIdx2(1),:));
+        for xxIdx=2:env.consts.xxBlocks
             temp1 = temp1 + env.opts.Q.forward(QxxIdx,xxIdx,env.state.S(env.consts.xxIdx1(xxIdx):env.consts.xxIdx2(xxIdx),:));
             temp2 = temp2 + env.opts.Q.forward(QxxIdx,xxIdx,env.state.X(env.consts.xxIdx1(xxIdx):env.consts.xxIdx2(xxIdx),:));
         end
