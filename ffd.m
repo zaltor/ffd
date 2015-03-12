@@ -135,13 +135,6 @@ function [X, iterations] = ffd(y, KH, varargin)
 %      FFD(..., 'cg', false, ...) will disable conjugate gradient and cause
 %      the step direction to be simply the (preconditioned) gradient.
 %
-%      FFD(..., 'precond', ffd.precond.None, ...) will force FFD to not use
-%      preconditioning
-%
-%      FFD(..., 'precond', ffd.precond.Equalize, ...) will use mode energy
-%      equalization-based preconditioning to reduce the negative effects of
-%      factorization.  This is the default behavior.
-%
 %      FFD(..., 'Q', Q, ...) will add an energy minimization term
 %      trace((Q*X)*(Q*X)') to the merit function, where Q is a
 %      linops.Blockwise object.
@@ -195,9 +188,8 @@ env.opts.R = env.consts.N;
 env.opts.Jthe = [];
 env.opts.Xthe = [];
 env.opts.verbose = true;
-env.opts.descent = ffd.descent.Steepest;
+env.opts.descent = ffd.descent.Equalized;
 env.opts.callback = ffd.callback.Status(1);
-env.opts.precond = ffd.precond.Equalize;
 env.opts.cg = true;
 env.opts.rs = RandStream.getGlobalStream;
 env.opts.C = linops.Identity(size(env.consts.KH,1),env.consts.KH.rowSplits);
@@ -240,23 +232,31 @@ env.consts.yBlocks = env.opts.C.rowBlocks;
 env.consts.yIdx1 = env.opts.C.rowFirst(1:env.consts.yBlocks);
 env.consts.yIdx2 = env.opts.C.rowLast(1:env.consts.yBlocks);
 
+env.consts.ypBlocks = env.opts.C.colBlocks;
+env.consts.ypIdx1 = env.opts.C.colFirst(1:env.consts.ypBlocks);
+env.consts.ypIdx2 = env.opts.C.colLast(1:env.consts.ypBlocks);
+
 % check for valid Q object and extract partitioning
 if isempty(env.opts.Q)
-    env.opts.Q = linops.Matrix(sparse(0,env.consts.N));
-end
-    
-if ~isa(env.opts.Q, 'linops.Blockwise')
+    env.consts.xxBlocks = 0;
+    env.consts.xxIdx1 = [];
+    env.consts.xxIdx2 = [];
+    env.consts.QxxBlocks = 0;
+    env.consts.QxxIdx1 = [];
+    env.consts.QxxIdx2 = [];
+elseif isa(env.opts.Q, 'linops.Blockwise')
+    if size(env.opts.Q,2) ~= env.consts.N
+        error('ffd:input:Q:cols','Q must have %d columns', env.consts.N);
+    end
+    env.consts.xxBlocks = env.opts.Q.colBlocks;
+    env.consts.xxIdx1 = env.opts.Q.colFirst(1:env.consts.xxBlocks);
+    env.consts.xxIdx2 = env.opts.Q.colLast(1:env.consts.xxBlocks);
+    env.consts.QxxBlocks = env.opts.Q.rowBlocks;
+    env.consts.QxxIdx1 = env.opts.Q.rowFirst(1:env.consts.QxxBlocks);
+    env.consts.QxxIdx2 = env.opts.Q.rowLast(1:env.consts.QxxBlocks);
+else
     error('ffd:input:Q:type','Q must either be empty or a linops.Blockwise object');
 end
-
-if size(env.opts.Q,2) ~= env.consts.N
-    error('ffd:input:Q:cols','Q must have %d columns', env.consts.N);
-end
-
-env.consts.xxBlocks = env.opts.Q.colBlocks;
-env.consts.xxIdx1 = env.opts.Q.colFirst(1:env.consts.xxBlocks);
-env.consts.xxIdx2 = env.opts.Q.colLast(1:env.consts.xxBlocks);
-env.consts.QxxBlocks = env.opts.Q.rowBlocks;
 
 env.consts.compareX = false;
 env.consts.compareJ = false;
@@ -347,7 +347,7 @@ end
 
 % fill in rest of state with initial values
 env.state.iteration = 0;
-env.state.delta = []; %zeros(env.consts.M,1);
+env.state.delta = [];
 env.state.G = zeros(env.consts.Xsize);
 env.state.Ghat = zeros(env.consts.Xsize);
 env.state.fval = 0;
