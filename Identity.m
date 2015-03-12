@@ -27,6 +27,7 @@ classdef Identity < linops.Blockwise
                 error('linops:Identity:IncorrectSplits',...
                       'incorrect specification of block boundaries');
             end
+            obj.update;
         end
         
         function yBlock = forward(obj, s, t, xBlock)
