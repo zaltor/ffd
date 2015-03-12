@@ -27,6 +27,7 @@ classdef Identity < linops.Blockwise
                 error('linops:Identity:IncorrectSplits',...
                       'incorrect specification of block boundaries');
             end
+            obj.update;
         end
         
         function yBlock = forward(obj, s, t, xBlock)
@@ -34,11 +35,9 @@ classdef Identity < linops.Blockwise
                 error('linops:Identity:Forward:ColumnBlockMismatch',...
                       'incorrect number of rows in xBlock');
             end
-            if s==t
-                yBlock = xBlock;
-            else
-                xBlockSize = size(xBlock);
-                yBlock = zeros([obj.blockSizes(s), xBlockSize(2:end)]);
+            yBlock = xBlock;
+            if s~=t
+                yBlock(:) = 0;
             end
         end
         
@@ -47,11 +46,9 @@ classdef Identity < linops.Blockwise
                 error('linops:Identity:Adjoint:RowBlockMismatch',...
                       'incorrect number of rows in yBlock');
             end
-            if s==t
-                xBlock = yBlock;
-            else
-                yBlockSize = size(yBlock);
-                xBlock = zeros([obj.blockSizes(t), yBlockSize(2:end)]);
+            xBlock = yBlock;
+            if s~=t
+                xBlock(:) = 0;
             end
         end
     end
