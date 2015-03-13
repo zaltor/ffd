@@ -407,7 +407,12 @@ for i=1:env.opts.L
         r1 = env.state.G_previous(:);
         d0 = env.state.Ghat(:);
         d1 = env.state.Ghat_previous(:);
-        env.state.beta = max(0, real((r0'*(d0-d1))/(r1'*d1)));
+        denom = (r1'*d1);
+        if denom == 0
+            env.state.beta = 0;
+        else
+            env.state.beta = max(0, real((r0'*(d0-d1))/denom)); 
+        end
         env.state.S = env.state.Ghat + env.state.beta*env.state.S;
         env.state.G_previous = env.state.G;
         env.state.Ghat_previous = env.state.Ghat;
@@ -438,16 +443,16 @@ for i=1:env.opts.L
                 - env.opts.C.forward(yIdx,yIdx,sum(KHX_block.*conj(KHX_block),2));
         end
         b_block = -env.opts.C.forward(yIdx,yIdx,sum(2*real(KHX_block.*conj(KHS_block)),2));
-        clear KHX_block;
         c_block = -env.opts.C.forward(yIdx,yIdx,sum(KHS_block.*conj(KHS_block),2));
-        clear KHS_block;            
         w2_block = env.consts.w2(env.consts.yIdx1(yIdx):env.consts.yIdx2(yIdx));
         env.state.quartic = env.state.quartic + w2_block'*[c_block.^2,2*c_block.*b_block,2*c_block.*delta_block+b_block.^2, 2*b_block.*delta_block, delta_block.^2];
-        clear b_block;
-        clear c_block;
-        clear delta_block;
-        clear w2_block;
     end
+    clear KHX_block;
+    clear KHS_block;            
+    clear b_block;
+    clear c_block;
+    clear delta_block;
+    clear w2_block;
     
     % add in energy minimization regularizer to the state.quartic
     for QxxIdx=1:env.consts.QxxBlocks
@@ -458,10 +463,10 @@ for i=1:env.opts.L
             temp2 = temp2 + env.opts.Q.forward(QxxIdx,xxIdx,env.state.X(env.consts.xxIdx1(xxIdx):env.consts.xxIdx2(xxIdx),:));
         end
         quadratic = [temp1(:)'*temp1(:), 2*real(temp1(:)'*temp2(:)), temp2(:)'*temp2(:)];
-        clear temp1;
-        clear temp2;
         env.state.quartic(3:5) = env.state.quartic(3:5) + quadratic;
     end
+    clear temp1;
+    clear temp2;
 
     % find the roots of the derivative
     env.state.cubic = [4 3 2 1].*env.state.quartic(1:4);
