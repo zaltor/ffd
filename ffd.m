@@ -100,17 +100,9 @@ function [X, iterations] = ffd(y, KH, varargin)
 %      an open topic of research for this situation. The default value is
 %      N.
 %
-%      FFD(..., 'X0', 'white', ...) will use an initial value equal to 
-%      white noise scaled such that the total output intensity when
-%      propagated is equal to the sum of the measurements. This is the
-%      default behavior.
-%
-%      FFD(..., 'X0', 'guess', ...) will use the adjoint operator on random
-%      phases and backpropagate to the source, rescaling to match the sum
-%      of output intensities with the sum of the measurements.
-%
 %      FFD(..., 'X0', X0, ...) will use the specific value X0 as the
-%      initial value.
+%      initial value.  Otherwise, FFD uses zero as the initial value and
+%      computes an initial descent direction based on factoring D
 %
 %      FFD(..., 'Jthe', J_THE, ...) will effectively compute 
 %      norm(X*X'-J_THE, 'fro')/N at each iteration, storing into JERRS. 
@@ -183,7 +175,8 @@ clear KH;
 env.opts = struct;
 env.opts.L = 1000;
 env.opts.w = [];
-env.opts.X0 = 'white';
+env.opts.X0 = [];
+env.opts.X0seed = false; % set to true to have initial X0 be a "hint" for starting direction instead of starting value
 env.opts.R = env.consts.N;
 env.opts.Jthe = [];
 env.opts.Xthe = [];
@@ -293,48 +286,8 @@ end
 env.state = struct;
 
 % Generate initial guess
-if strcmp(env.opts.X0,'white') == true
-    if env.opts.verbose
-        fprintf('Generating random initial value for X...\n');
-    end
-    env.state.X = env.opts.rs.randn(env.consts.Xsize) + 1j*env.opts.rs.randn(env.consts.Xsize);
-    % forward propagate X and rescale X so that total intensity == y's
-    total_intensity = 0;
-    for yIdx = 1:env.consts.yBlocks
-        for xIdx = 1:env.consts.xBlocks
-            KHX_block = env.consts.KH.forward(yIdx,xIdx,env.state.X(env.consts.xIdx1(xIdx):env.consts.xIdx2(xIdx),:));
-            total_intensity = total_intensity + sum(env.opts.C.forward(yIdx,yIdx,sum(KHX_block.*conj(KHX_block),2)));
-        end
-    end
-    clear KHX_block;
-    scaling = sqrt(sum(env.consts.y)/total_intensity);
-    env.state.X = scaling*env.state.X;
-elseif strcmp(env.opts.X0,'guess') == true
-    if env.opts.verbose
-        fprintf('Generating random guess for X...\n');
-    end
-    env.state.X = zeros(Xsize);
-    for yIdx = 1:yBlocks
-        for xIdx = 1:xBlocks
-            ytemp = repmat(sqrt(env.consts.y(env.consts.yIdx1(yIdx):env.consts.yIdx2(yIdx))),[1 env.consts.Xsize(2)]) .* ...
-                    exp(2j*pi*env.opts.rs.rand([env.consts.yIdx2(yIdx)-env.consts.yIdx1(yIdx)+1,env.consts.Xsize(2)]));
-            ytemp = env.opts.C.adjoint(yIdx,yIdx,ytemp);
-            env.state.X(env.consts.xIdx1(xIdx):env.consts.xIdx2(xIdx),:) = ...
-                env.state.X(env.consts.xIdx1(xIdx):env.consts.xIdx2(xIdx),:) + env.consts.KH.adjoint(yIdx,xIdx,ytemp);
-            clear ytemp;
-        end
-    end
-    % forward propagate X and rescale X so that total intensity == y's
-    total_intensity = 0;
-    for yIdx = 1:env.consts.yBlocks
-        for xIdx = 1:env.consts.xBlocks
-            KHX_block = env.consts.KH.forward(yIdx,xIdx,env.state.X(env.consts.xIdx1(xIdx):env.consts.xIdx2(xIdx),:));
-            total_intensity = total_intensity + sum(env.opts.C.forward(yIdx,yIdx,sum(KHX_block.*conj(KHX_block),2)));
-        end
-    end
-    clear KHX_block;
-    scaling = sqrt(sum(env.consts.y)/total_intensity);
-    env.state.X = scaling*env.state.X;
+if isempty(env.opts.X0)
+    env.state.X = zeros(env.consts.Xsize);
 else
     if ~isequal(size(env.opts.X0),env.consts.Xsize)
         error('ffd:input:X0', 'X0 needs to be of size %s%d', sprintf('%d-by-',env.consts.Xsize(1:end-1)), env.consts.Xsize(end));
@@ -382,12 +335,6 @@ for i=1:env.opts.L
 
     env.state.iteration = i;
 
-    if env.consts.compareX
-        env.state.Jerr = ffd.factored_distance(env.opts.Xthe, env.state.X)/env.consts.N;
-    elseif env.consts.compareJ
-        env.state.Jerr = norm(env.opts.Jthe-env.state.J,'fro')/env.consts.N;
-    end
-    
     % calculate the descent direction
     % writes to:
     %    env.state.G (steepest descent direction)
@@ -397,7 +344,18 @@ for i=1:env.opts.L
     %    env.state.yerr (rmse of measurements not masked out by yerr_mask)
     %    env.state.fval_pre (quartic part of merit function not masked out)
     %    env.state.delta (optional, the error per measurement)
-    env.opts.descent(env);
+    if env.state.iteration==1 && (env.opts.X0seed || ~any(env.state.X(:)))
+        initial = ffd.descent.Initial;
+        initial(env);
+    else
+        env.opts.descent(env);
+    end
+
+    if env.consts.compareX
+        env.state.Jerr = ffd.factored_distance(env.opts.Xthe, env.state.X)/env.consts.N;
+    elseif env.consts.compareJ
+        env.state.Jerr = norm(env.opts.Jthe-env.state.J,'fro')/env.consts.N;
+    end
     
     % compute conjugate gradient
     if env.opts.cg && ~env.state.reset_cg
