@@ -8,7 +8,7 @@ classdef Steepest
             
             % allocate memory
             G = zeros(env.consts.Xsize);
-            Gblock(env.consts.Xsize) = 0;
+            Gblock(env.consts.Xsize(1),env.consts.Xsize(2)) = 0;
             
             % ready for accumulation
             env.state.fval = 0;

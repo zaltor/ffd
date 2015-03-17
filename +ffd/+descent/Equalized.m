@@ -8,7 +8,7 @@ classdef Equalized
             
             % allocate memory
             DU = zeros(env.consts.Xsize);
-            DUblock(env.consts.Xsize) = 0;
+            DUblock(env.consts.Xsize(1),env.consts.Xsize(2)) = 0;
             
             % compute SVD
             [U,S,V] = svd(env.state.X,'econ');

@@ -449,7 +449,6 @@ for i=1:env.opts.L
     
     % do callback
     env.opts.callback(env);
-    
     % update
     env.state.X = env.state.X+env.state.alpha*env.state.S;
     if env.consts.compareJ

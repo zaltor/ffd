@@ -15,10 +15,11 @@ classdef Initial
             % make sure to reset cg
             env.state.reset_cg = true;
             
-            % if input is actually zero, just use the standard basis
+            % if input is actually zero, use a randomized basis
             if S(1,1) == 0
-                U = eye(env.consts.Xsize(1));
-                U = U(:,1:env.consts.Xsize(2));
+                X = env.opts.rs.randn(env.consts.Xsize) + ...
+                    1j*env.opts.rs.randn(env.consts.Xsize);
+                [U,~] = svd(X);
             end
    
             % compute U^HDU
@@ -52,12 +53,14 @@ classdef Initial
             UHDU = U'*DU;
             UHDU = 0.5*(UHDU+UHDU');
             
-            % factor resulting UHDU
-            [U2,S2] = svd(UHDU);
+            % factor resulting UHDU (what we actually want is 
+            % Ghat*Ghat' = UU^H*D*UU^H (i.e. projection of D onto basis)
+            [V,D] = eig(UHDU); % U^HDU = VDV^-1
+            D = sqrt(max(real(diag(D)),0));
             
             % set the output directions
             env.state.G(:) = 0;
-            env.state.Ghat(:) = U2*sqrt(S2);
+            env.state.Ghat(:) = U*bsxfun(@times,V,D');
         end
     end
 end
