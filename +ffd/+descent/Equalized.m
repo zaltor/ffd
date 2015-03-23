@@ -29,9 +29,7 @@ classdef Equalized
                     KHU_block = ...
                         KHU_block + env.consts.KH.forward(yIdx,xIdx,U(env.consts.xIdx1(xIdx):env.consts.xIdx2(xIdx),:));
                 end
-                KHUS_block = bsxfun(@times,KHU_block,diagS');
-                y_block = ...
-                    env.opts.C.forward(yIdx,yIdx,sum(KHUS_block.*conj(KHUS_block),2));
+                y_block = env.opts.C.forward(yIdx,yIdx,(real(KHU_block).^2)*(diagS.^2)+(imag(KHU_block).^2)*(diagS.^2));
                 delta_block = env.consts.y(yStart:yEnd) - y_block;
                 w2_block = env.consts.w2(yStart:yEnd);
                 % KHU_block getting multiplied on the left by E

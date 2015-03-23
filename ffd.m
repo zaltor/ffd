@@ -199,7 +199,7 @@ env.consts.Xsize = [env.consts.N, env.opts.R];
 if isempty(env.opts.w)
     env.consts.w2 = true(env.consts.M,1);
 else
-    env.consts.w2 = env.opts.w.*conj(env.opts.w);
+    env.consts.w2 = real(env.opts.w).^2 + imag(env.opts.w).^2;
 end
 
 % check for valid C object and extract paritioning
@@ -398,10 +398,10 @@ for i=1:env.opts.L
             delta_block = env.state.delta(env.consts.yIdx1(yIdx):env.consts.yIdx2(yIdx));
         else
             delta_block = env.consts.y(env.consts.yIdx1(yIdx):env.consts.yIdx2(yIdx)) ...
-                - env.opts.C.forward(yIdx,yIdx,sum(KHX_block.*conj(KHX_block),2));
+                - env.opts.C.forward(yIdx,yIdx,sum(real(KHX_block).^2,2)+sum(imag(KHX_block).^2,2));
         end
-        b_block = -env.opts.C.forward(yIdx,yIdx,sum(2*real(KHX_block.*conj(KHS_block)),2));
-        c_block = -env.opts.C.forward(yIdx,yIdx,sum(KHS_block.*conj(KHS_block),2));
+        b_block = -2*env.opts.C.forward(yIdx,yIdx,sum(real(KHX_block).*real(KHS_block),2)+sum(imag(KHX_block).*imag(KHS_block),2));
+        c_block = -env.opts.C.forward(yIdx,yIdx,sum(real(KHS_block).^2,2)+sum(imag(KHS_block).^2,2));
         w2_block = env.consts.w2(env.consts.yIdx1(yIdx):env.consts.yIdx2(yIdx));
         env.state.quartic = env.state.quartic + w2_block'*[c_block.^2,2*c_block.*b_block,2*c_block.*delta_block+b_block.^2, 2*b_block.*delta_block, delta_block.^2];
     end

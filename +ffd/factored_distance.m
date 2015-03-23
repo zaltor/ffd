@@ -10,16 +10,17 @@ if size(X2,1) ~= N
           'X1 and X2 must have the same number of rows');
 end
 
-if ~exist('X2','var')
-    X2 = sparse(N,1);
-end
+nX1 = numel(X1);
+nX2 = numel(X2);
 
-if ~exist('partition','var')
-    partition = 104857600;
+part = max(nX1,nX2);
+
+if nargin > 2
+    part = partition;
 end
 
 % shortcut if both X1 and X2 have only one column
-if numel(X1) == N && numel(X2) == N
+if nX1 == N && nX2 == N
     aha = (X1'*X1);
     ahb = (X1'*X2);
     bhb = (X2'*X2);
@@ -29,22 +30,18 @@ if numel(X1) == N && numel(X2) == N
     return;
 end
 
-block_size = ceil(partition/N);
+block_size = ceil(part/N);
 
-blocks = ceil(N/block_size);
-
-temp = zeros(blocks,1);
-j=1;
+n = 0;
 
 for i=1:block_size:N
     block_start = i;
     block_end = min(block_start+block_size-1,N);
     temp2 = X1*X1(block_start:block_end,:)' - X2*X2(block_start:block_end,:)';
-    temp(j) = norm(temp2(:),2);
-    j = j + 1;
+    n = n + temp2(:)'*temp2(:);
 end
 
-n = norm(temp,2);
+n = sqrt(n);
 
 end
 

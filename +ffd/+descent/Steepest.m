@@ -25,7 +25,7 @@ classdef Steepest
                         KHX_block + env.consts.KH.forward(yIdx,xIdx,env.state.X(env.consts.xIdx1(xIdx):env.consts.xIdx2(xIdx),:));
                 end
                 y_block = ...
-                    env.opts.C.forward(yIdx,yIdx,sum(KHX_block.*conj(KHX_block),2));
+                    env.opts.C.forward(yIdx,yIdx,sum(real(KHX_block).^2,2)+sum(imag(KHX_block).^2,2));
                 delta_block = env.consts.y(yStart:yEnd) - y_block;
                 w2_block = env.consts.w2(yStart:yEnd);
                 % KHX_block getting multiplied on the left by E
