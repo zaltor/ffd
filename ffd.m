@@ -365,11 +365,11 @@ for i=1:env.opts.L
         r1 = env.state.G_previous(:);
         d0 = env.state.Ghat(:);
         d1 = env.state.Ghat_previous(:);
-        denom = (r1'*d1);
+        denom = real(r1'*d1);
         if denom == 0
             env.state.beta = 0;
         else
-            env.state.beta = max(0, real((r0'*(d0-d1))/denom)); 
+            env.state.beta = max(0, real(r0'*(d0-d1)) / denom);
         end
         env.state.S = env.state.Ghat + env.state.beta*env.state.S;
         env.state.G_previous = env.state.G;
