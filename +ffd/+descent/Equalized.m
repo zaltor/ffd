@@ -69,6 +69,21 @@ classdef Equalized
 
             % copy out the descent direction
             env.state.G(:) = bsxfun(@times,DU,diagS') * V';
+            
+            % determine whether to terminate iterations
+            tmp = norm(env.state.G,'fro');
+            if env.consts.N == env.opts.R && env.opts.B*tmp < env.consts.tau_prime
+                UHDU = U'*DU;
+                eta = eigs(UHDU,1,'LR');
+                env.state.terminate = env.opts.B*tmp + env.opts.B^2*eta < env.consts.tau_prime;
+                if env.state.terminate
+                    return;
+                else
+                    fprintf('.');
+                end
+            end
+            
+            % copy out step direction
             env.state.Ghat(:) = scale*(DU*V');
 
             % always reset cg on first iteration
