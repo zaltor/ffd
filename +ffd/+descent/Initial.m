@@ -39,7 +39,7 @@ classdef Initial
                 KHU_block = bsxfun(@times,env.opts.C.adjoint(yIdx,yIdx,delta_block.*w2_block),KHU_block);
                 % delta_block is magnitude squared from now on
                 delta_block = delta_block.*conj(delta_block);
-                yerr_mask_block = env.opts.yerr_mask(yStart:yEnd);
+                yerr_mask_block = env.opts.masky(yStart:yEnd);
                 env.state.fval = env.state.fval + w2_block'*delta_block;
                 env.state.fval_pre = env.state.fval_pre + w2_block'*(delta_block.*yerr_mask_block);
                 env.state.yerr = env.state.yerr + delta_block'*yerr_mask_block;

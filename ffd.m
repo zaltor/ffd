@@ -9,38 +9,16 @@ function [X, iterations] = ffd(y, KH, varargin)
 %   to minimize the least squared error in intensity measurements. The
 %   result X is an N-by-N complex matrix where N is the number of spatial
 %   samples in the source. Each column of X is a (generalized) coherence
-%   mode, and Y is an M-by-1 nonnegative vector containing the
-%   intensity measurements.
+%   mode, and Y is an M-by-1 vector containing the intensity measurements.
 %
-%   X = FFD(Y, KH, 'w', W) will instead minimize the weighted least squared
-%   error in intensity measurements, with weighting vector W, which is
-%   expected to be the same size as Y. Each element of W weighs the
-%   absolute value of the error for the same index element in Y.
+%   X = FFD(Y, KH, 'sigma', SIGMA) will instead minimize the weighted least
+%   squared error in intensity measurements.  SIGMA is a vector with the
+%   same size as Y.  The squared error corresponding to measurement Y(m) is
+%   scaled by SIGMA(m)^-2.
 %
-%   X = FFD(..., 'C', C) will minimize the (weighted) least squared error
-%   in linear combinations of intensity measurements, where C is a
-%   linops.Blockwise object. That is, if Z is a vector of the intensity
-%   values derived from the current iterate, then the merit function is
-%   equal to norm(Y-C*Z,2)^2. Note: C must be block-wise diagonal and the 
-%   row partitioning pattern for KH must be the same as the row and column 
-%   partitioning patterns for C.
-%
-%   X = FFD(Y, KH, 'R', R) performs coherence retrieval where the number
-%   of modes is limited to R. In this case, X will be an N-by-R matrix. For
-%   phase retrieval (i.e. a fully coherent field) R should be set to 1.
-%   
 %   [X, ITERATIONS] = FFD(...) stores per-iteration numbers such as the
 %   merit function value, the RMS error in the intensity, etc. in the
 %   structure ITERATIONS.
-%
-%   [X, ITERATIONS] = FFD(Y, KH, 'Jthe', J0, ...) will additionally store
-%   in ITERATIONS the per-iteration RMS error in the mutual intensity with
-%   respect to J0.
-%
-%   [X, ITERATIONS] = FFD(Y, KH, 'Xthe', X0, ...) will additionally store
-%   in ITERATIONS the per-iteration RMS error in the mutual intensity with
-%   respect to X0*X0'. This is more efficient than the previous approach if
-%   R is set to 1.
 %
 %   Merit Function
 %   ==============
@@ -87,28 +65,35 @@ function [X, iterations] = ffd(y, KH, varargin)
 %
 %   The following is a complete list of acceptable options:
 %
-%      FFD(..., 'L', L, ...) will cause FFD to run for L iterations. The
-%      default value is 1000.
+%      FFD(..., 'imax', IMAX, ...) will cause FFD to run for at most
+%      IMAX iterations. The default value is 1000.
 %
-%      FFD(..., 'w', W, ...) will use the weights in W for weighted least
-%      squares. W must be the same size as Y. The default value is a vector
-%      of ones.
+%      FFD(..., 'B', B, ...) sets an assumed upper bound for
+%      norm(X-X_THE,'fro').  The default value is Inf.
 %
-%      FFD(..., 'R', R, ...) will restrict the solution to R modes. In
-%      practice, setting R to be less than N will cause FFD to converge
-%      poorly without enough measurements. Convergence guarantees are still
-%      an open topic of research for this situation. The default value is
-%      N.
+%      FFD(..., 'tau', TAU, ...) sets a termination threshold. FFD can
+%      choose to terminate when it can prove that the merit function value
+%      is within TAU_PRIME of the global minimum, assuming B is correct.
+%      TAU_PRIME is TAU multiplied by the merit function value for X=0.
+%      The default value is 0, i.e. no premature termination.
 %
-%      FFD(..., 'X0', X0, ...) will use the specific value X0 as the
+%      FFD(..., 'sigma', SIGMA, ...) specifies noise standard deviation for
+%      each measurement and hence must be the same size as Y.  The default
+%      value is a vector of ones.
+%
+%      FFD(..., 'R', R, ...) will restrict the solution to R modes.
+%      Convergence guarantees are still an open topic of research for this
+%      situation. The default value is N.
+%
+%      FFD(..., 'X1', X1, ...) will use the specific value X1 as the
 %      initial value.  Otherwise, FFD uses zero as the initial value and
-%      computes an initial descent direction based on factoring D
+%      computes an initial descent direction based on factoring D.
 %
-%      FFD(..., 'Jthe', J_THE, ...) will effectively compute 
-%      norm(X*X'-J_THE, 'fro')/N at each iteration, storing into JERRS. 
+%      FFD(..., 'Jthe', JTHE, ...) will effectively compute 
+%      norm(X*X'-JTHE, 'fro')/N at each iteration, storing into JERRS. 
 %
-%      FFD(..., 'Xthe', X_THE, ...) will effectively compute
-%      norm(X*X'-X_THE*X_THE', 'fro')/N at each iteration, storing into
+%      FFD(..., 'Xthe', XTHE, ...) will effectively compute
+%      norm(X*X'-XTHE*XTHE', 'fro')/N at each iteration, storing into
 %      JERRS. If the JERRS output variable is assigned (i.e. used), then at
 %      least either 'Jthe' or 'Xthe' must be specified.
 %
@@ -131,18 +116,25 @@ function [X, iterations] = ffd(y, KH, varargin)
 %      trace((Q*X)*(Q*X)') to the merit function, where Q is a
 %      linops.Blockwise object.
 %
+%      FFD(..., 'C', C) will cause FFD to minimize the (weighted) least
+%      squared error in linear combinations of point-wise intensity
+%      measurements, where C is a linops.Blockwise object. That is, if Z is
+%      a vector of the intensity values derived from the current iterate,
+%      then the merit function is equal to norm(Y-C*Z,2)^2. Note: C must be
+%      block-wise diagonal and the row partitioning pattern for KH must be
+%      the same as the row and column partitioning patterns for C.
+%
 %      FFD(..., 'rs', RS, ...) will force FFD to use a specific RandStream
 %      for generating random numbers (i.e. for setting the initial value).
 %      If unspecified, FFD will use the global random number generator.
 %
-%      FFD(..., 'Jerr_mask', JERR_MASK, ...) will force FFD to only compute
-%      JERRS based on certain elements of J. JERR_MASK is a logical N-by-1
-%      array (i.e. same number of rows as X and J_THE), and an element is
-%      true if the corresponding row in X is to be used for mutual
-%      intensity RMS error calculation.
+%      FFD(..., 'maskJ', MASKJ, ...) will force FFD to only compute
+%      JERRS based on certain elements of J. MASKJ is a logical N-by-1
+%      array and only rows and columns in J corresponding to values of true
+%      in MASKJ are used in JERRS calculation.
 %
-%      FFD(..., 'yerr_mask', YERR_MASK, ...) will force FFD to only compute
-%      YERRS based on certain elements of Y. YERR_MASK is a logical M-by-1
+%      FFD(..., 'masky', MASKY, ...) will force FFD to only compute
+%      YERRS based on certain elements of Y. MASKY is a logical M-by-1
 %      array (i.e. the same size as Y), and an element is true if the
 %      corresponding element in Y is to be used for RMS error calculation.
 
@@ -173,10 +165,11 @@ clear KH;
 
 % get options
 env.opts = struct;
-env.opts.L = 1000;
-env.opts.w = [];
-env.opts.X0 = [];
-env.opts.X0seed = false; % set to true to have initial X0 be a "hint" for starting direction instead of starting value
+env.opts.imax = 1000;
+env.opts.sigma = [];
+env.opts.B = Inf;
+env.opts.tau = 0;
+env.opts.X1 = [];
 env.opts.R = env.consts.N;
 env.opts.Jthe = [];
 env.opts.Xthe = [];
@@ -187,22 +180,36 @@ env.opts.cg = true;
 env.opts.rs = RandStream.getGlobalStream;
 env.opts.C = linops.Identity(size(env.consts.KH,1),env.consts.KH.rowSplits);
 env.opts.Q = [];
-env.opts.yerr_mask = true(env.consts.M,1);
-env.opts.Jerr_mask = true(env.consts.N,1);
+env.opts.masky = true(env.consts.M,1);
+env.opts.maskJ = true(env.consts.N,1);
 
+% set to true to have initial X0 be a "hint" for starting direction instead 
+% of starting value
+env.opts.X1seed = false; 
+
+% grab the options
 env.opts = mhelpers.getopts(env.opts, varargin{:});
 
 % size of X
 env.consts.Xsize = [env.consts.N, env.opts.R];
 
-% precalculate w^2
-if isempty(env.opts.w)
+% precalculate sigma^-2
+if isempty(env.opts.sigma)
     env.consts.w2 = true(env.consts.M,1);
 else
-    env.consts.w2 = real(env.opts.w).^2 + imag(env.opts.w).^2;
+    if numel(env.opts.sigma) ~= M || size(env.opts.sigma,1) ~= M
+        error('ffd:input:sigma:size', 'sigma must be an M-by-1 vector');
+    end
+    if any(imag(env.opts.sigma(:))) || any(env.opts.sigma(:)<=0)
+        error('ffd:input:sigma:type', 'sigma must be all positive');
+    end
+    env.consts.w2 = env.opts.sigma.^-2;
 end
 
-% check for valid C object and extract paritioning
+% compute actual termination threshold tau_prime
+env.consts.tau_prime = env.opts.tau * (env.consts.w2'*(env.consts.y.^2));
+
+% check for valid C object and extract partitioning
 if ~isa(env.opts.C, 'linops.Blockwise')
     error('ffd:input:C:type','C must be a linops.Blockwise object');
 end
@@ -272,13 +279,13 @@ end
 % Setup additional output parameters
 if nargout > 1
     iterations = struct;
-    iterations.fvals = zeros(env.opts.L,1);
-    iterations.yerrs = zeros(env.opts.L,1);
-    iterations.G2s = zeros(env.opts.L,1);
-    iterations.S2s = zeros(env.opts.L,1);
-    iterations.ts = zeros(env.opts.L,1);
+    iterations.fvals = zeros(env.opts.imax,1);
+    iterations.yerrs = zeros(env.opts.imax,1);
+    iterations.G2s = zeros(env.opts.imax,1);
+    iterations.S2s = zeros(env.opts.imax,1);
+    iterations.ts = zeros(env.opts.imax,1);
     if env.consts.compareJ || env.consts.compareX
-        iterations.Jerrs = zeros(env.opts.L,1);
+        iterations.Jerrs = zeros(env.opts.imax,1);
     end
 end
 
@@ -286,21 +293,25 @@ end
 env.state = struct;
 
 % Generate initial guess
-if isempty(env.opts.X0)
+if isempty(env.opts.X1)
     env.state.X = zeros(env.consts.Xsize);
 else
-    if ~isequal(size(env.opts.X0),env.consts.Xsize)
-        error('ffd:input:X0', 'X0 needs to be of size %s%d', sprintf('%d-by-',env.consts.Xsize(1:end-1)), env.consts.Xsize(end));
+    if ~isequal(size(env.opts.X1),env.consts.Xsize)
+        error('ffd:input:X1', 'X1 needs to be of size %s%d', sprintf('%d-by-',env.consts.Xsize(1:end-1)), env.consts.Xsize(end));
     end
     if env.opts.verbose
-        fprintf('Using given initial value for X...\n');
+        if env.opts.X1seed
+            fprintf('Using given initial hint for X...\n');
+        else
+            fprintf('Using given initial value for X...\n');
+        end
     end
-    env.state.X = env.opts.X0;
+    env.state.X = env.opts.X1;
 end
 
 % fill in rest of state with initial values
 env.state.iteration = 0;
-env.state.delta = [];
+env.state.Delta = [];
 env.state.G = zeros(env.consts.Xsize);
 env.state.Ghat = zeros(env.consts.Xsize);
 env.state.fval = 0;
@@ -308,6 +319,7 @@ env.state.fval_pre = 0;
 env.state.yerr = 0;
 env.state.S = zeros(env.consts.Xsize);
 env.state.reset_cg = false;
+env.state.terminate = false;
 env.state.G_previous = zeros(env.consts.Xsize);
 env.state.Ghat_previous = zeros(env.consts.Xsize);
 env.state.quartic = zeros(1,5);
@@ -319,11 +331,11 @@ env.state.beta = 0;
 env.state.t = 0;
 
 if env.consts.compareX
-    env.state.Jerr = ffd.factored_distance(env.opts.Xthe, env.state.X)/env.consts.N;
+    env.state.Jerr = ffd.factored_distance(env.opts.Xthe(env.opts.maskJ,:), env.state.X(env.opts.maskJ,:))/sum(env.opts.maskJ);
 elseif env.consts.compareJ
     % set initial value of J for error comparison
-    env.state.J = env.state.X*env.state.X';
-    env.state.Jerr = norm(env.opts.Jthe-env.state.J,'fro')/env.consts.N;
+    env.state.maskedJ = env.state.X(env.opts.maskJ,:)*env.state.X(env.opts.maskJ,:)';
+    env.state.Jerr = norm(env.opts.Jthe(env.opts.maskJ,env.opts.maskJ)-env.state.maskedJ,'fro')/sum(env.opts.maskJ);
 end
 
 % do initial callback
@@ -331,7 +343,7 @@ env.opts.callback(env);
 
 start_time = tic;
 
-for i=1:env.opts.L
+for i=1:env.opts.imax
 
     env.state.iteration = i;
 
@@ -343,18 +355,34 @@ for i=1:env.opts.L
     %    env.state.fval (value of merit function)
     %    env.state.yerr (rmse of measurements not masked out by yerr_mask)
     %    env.state.fval_pre (quartic part of merit function not masked out)
-    %    env.state.delta (optional, the error per measurement)
-    if env.state.iteration==1 && (env.opts.X0seed || ~any(env.state.X(:)))
+    %    env.state.Delta (optional, the error per measurement)
+    %    env.state.terminate (set to true to stop iterating)
+    if env.state.iteration==1 && (env.opts.X1seed || ~any(env.state.X(:)))
         initial = ffd.descent.Initial;
         initial(env);
     else
         env.opts.descent(env);
     end
 
+    if env.state.terminate
+        % terminate and truncate per-iteration values
+        if exist('iterations','var')
+            iterations.fvals = iterations.fvals(1:i-1);
+            iterations.yerrs = iterations.yerrs(1:i-1);
+            iterations.G2s = iterations.G2s(1:i-1);
+            iterations.S2s = iterations.S2s(1:i-1);
+            iterations.ts = iterations.ts(1:i-1);
+            if env.consts.compareJ || env.consts.compareX
+                iterations.Jerrs = iterations.Jerrs(1:i-1);
+            end
+        end
+        break;
+    end
+
     if env.consts.compareX
-        env.state.Jerr = ffd.factored_distance(env.opts.Xthe, env.state.X)/env.consts.N;
+        env.state.Jerr = ffd.factored_distance(env.opts.Xthe(env.opts.maskJ,:), env.state.X(env.opts.maskJ,:))/sum(env.opts.maskJ);
     elseif env.consts.compareJ
-        env.state.Jerr = norm(env.opts.Jthe-env.state.J,'fro')/env.consts.N;
+        env.state.Jerr = norm(env.opts.Jthe(env.opts.maskJ,env.opts.maskJ)-env.state.maskedJ,'fro')/sum(env.opts.maskJ);
     end
     
     % compute conjugate gradient
@@ -366,10 +394,10 @@ for i=1:env.opts.L
         d0 = env.state.Ghat(:);
         d1 = env.state.Ghat_previous(:);
         denom = real(r1'*d1);
-        if denom == 0
+        if denom <= 0
             env.state.beta = 0;
         else
-            env.state.beta = max(0, real(r0'*(d0-d1)) / denom);
+            env.state.beta = max(0, (real(r0'*d0)-real(r0'*d1)) / denom);
         end
         env.state.S = env.state.Ghat + env.state.beta*env.state.S;
         env.state.G_previous = env.state.G;
@@ -394,8 +422,8 @@ for i=1:env.opts.L
             KHX_block = KHX_block + env.consts.KH.forward(yIdx,xIdx,env.state.X(env.consts.xIdx1(xIdx):env.consts.xIdx2(xIdx),:));
             KHS_block = KHS_block + env.consts.KH.forward(yIdx,xIdx,env.state.S(env.consts.xIdx1(xIdx):env.consts.xIdx2(xIdx),:));
         end
-        if ~isempty(env.state.delta)
-            delta_block = env.state.delta(env.consts.yIdx1(yIdx):env.consts.yIdx2(yIdx));
+        if ~isempty(env.state.Delta)
+            delta_block = env.state.Delta(env.consts.yIdx1(yIdx):env.consts.yIdx2(yIdx));
         else
             delta_block = env.consts.y(env.consts.yIdx1(yIdx):env.consts.yIdx2(yIdx)) ...
                 - env.opts.C.forward(yIdx,yIdx,sum(real(KHX_block).^2,2)+sum(imag(KHX_block).^2,2));
@@ -452,7 +480,7 @@ for i=1:env.opts.L
     % update
     env.state.X = env.state.X+env.state.alpha*env.state.S;
     if env.consts.compareJ
-        env.state.J = env.state.X*env.state.X';
+        env.state.maskedJ = env.state.X(env.opts.maskJ,:)*env.state.X(env.opts.maskJ,:)';
     end
 end % end iterations
 
