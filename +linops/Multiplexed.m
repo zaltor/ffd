@@ -102,7 +102,7 @@ classdef Multiplexed < linops.Blockwise
                 end
             end
             % done
-            update@Blockwise(obj);
+            update@linops.Blockwise(obj);
         end
         
         function yBlock = forward(obj, s, t, xBlock)
