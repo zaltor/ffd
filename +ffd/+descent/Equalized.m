@@ -78,8 +78,6 @@ classdef Equalized
                 env.state.terminate = env.opts.B*tmp + env.opts.B^2*eta < env.consts.tau_prime;
                 if env.state.terminate
                     return;
-                else
-                    fprintf('.');
                 end
             end
             
