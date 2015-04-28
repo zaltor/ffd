@@ -19,7 +19,7 @@ classdef Initial
             if S(1,1) == 0
                 X = env.opts.rs.randn(env.consts.Xsize) + ...
                     1j*env.opts.rs.randn(env.consts.Xsize);
-                [U,~] = svd(X);
+                [U,~] = svd(X, 'econ');
             end
    
             % compute U^HDU
