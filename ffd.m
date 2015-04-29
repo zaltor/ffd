@@ -197,7 +197,7 @@ env.consts.Xsize = [env.consts.N, env.opts.R];
 if isempty(env.opts.sigma)
     env.consts.w2 = true(env.consts.M,1);
 else
-    if numel(env.opts.sigma) ~= M || size(env.opts.sigma,1) ~= M
+    if numel(env.opts.sigma) ~= env.consts.M || size(env.opts.sigma,1) ~= env.consts.M
         error('ffd:input:sigma:size', 'sigma must be an M-by-1 vector');
     end
     if any(imag(env.opts.sigma(:))) || any(env.opts.sigma(:)<=0)
