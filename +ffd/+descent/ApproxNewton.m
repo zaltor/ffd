@@ -127,7 +127,7 @@ classdef ApproxNewton < handle
             env.state.G(:) = bsxfun(@times,DU,diagS') * V';
             
             % determine whether to terminate iterations
-            tmp = norm(env.state.G,'fro');
+            tmp = 2*norm(env.state.G,'fro');
             if env.consts.N == env.opts.R && env.opts.B*tmp < env.consts.tau_prime
                 UHDU = U'*DU;
                 eta = eigs(UHDU,1,'LR');
