@@ -27,7 +27,13 @@ classdef ApproxNewton < handle
             end
         end
         
-        function subsref(obj, args)
+        function varargout = subsref(obj, args)
+
+            if ~isequal(args.type,'()')
+                [varargout{1:nargout}] = builtin('subsref', obj, args);
+                return;
+            end
+
             env = args.subs{1};
             
             if isempty(obj.knm_mag2)
@@ -130,7 +136,7 @@ classdef ApproxNewton < handle
             tmp = 2*norm(env.state.G,'fro');
             if env.consts.N == env.opts.R && env.opts.B*tmp < env.consts.tau_prime
                 UHDU = U'*DU;
-                eta = eigs(UHDU,1,'LR');
+                eta = max(0,real(eigs(UHDU,1,'LR')));
                 env.state.terminate = env.opts.B*tmp + env.opts.B^2*eta < env.consts.tau_prime;
                 if env.state.terminate
                     return;
